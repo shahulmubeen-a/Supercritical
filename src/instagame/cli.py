@@ -14,7 +14,7 @@ from .board import Board
 from .game import Game
 from .logging_config import configure_logging, get_logger
 from .ollama import OllamaClient, OllamaError, resolve_model_tag
-from .players import PLAYER_TYPES, build_player
+from .players import PLAYER_TYPES, build_player, offline_types, types_in_tier
 from .replay import Recorder
 from .viewer import DEFAULT_TITLE, write_page
 
@@ -63,8 +63,8 @@ def build_parser() -> argparse.ArgumentParser:
         "--players",
         default=DEFAULT_PLAYERS,
         help=(
-            "comma separated seats from: "
-            f"{', '.join(sorted(PLAYER_TYPES))}. "
+            "comma separated seats. Strategies: "
+            f"{', '.join(offline_types())}. "
             "Model seats take a tag, for example ollama:gemma3:4b"
         ),
     )
@@ -109,6 +109,9 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument("--title", default=DEFAULT_TITLE, help="title shown on the replay page")
+    parser.add_argument(
+        "--list-players", action="store_true", help="print every player type and exit"
+    )
     parser.add_argument("--verbose", action="store_true", help="debug level logging")
     return parser
 
@@ -408,6 +411,16 @@ def main(argv: list[str] | None = None) -> int:
     """
     parser = build_parser()
     args = parser.parse_args(argv)
+    if args.list_players:
+        logger = configure_logging(logging.INFO)
+        for tier in ("positional", "simulating"):
+            logger.info("[%s]", tier)
+            for kind in types_in_tier(tier):
+                doc = (PLAYER_TYPES[kind].__doc__ or "").strip().splitlines()[0]
+                logger.info("  %-12s %s", kind, doc)
+        logger.info("[model]")
+        logger.info("  %-12s %s", "ollama", "Plays via a local model served by Ollama.")
+        return 0
     seats = [parse_seat(spec) for spec in args.players.split(",") if spec.strip()]
     if len(seats) < 2:
         parser.error("need at least two players")

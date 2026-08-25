@@ -20,7 +20,16 @@ class Player(ABC):
         Unique seat id, also used as the cell owner value.
     name : str
         Display name.
+
+    Attributes
+    ----------
+    tier : str
+        How far the player searches: ``"positional"`` for players that read
+        only the board as it stands, ``"simulating"`` for those that play
+        candidate moves out first. Used to rank like against like.
     """
+
+    tier = "positional"
 
     def __init__(self, player_id: int, name: str) -> None:
         self.player_id = player_id
