@@ -11,12 +11,34 @@ from collections import Counter
 from .board import Board
 from .game import Game
 from .logging_config import configure_logging
+from .ollama import OllamaClient, OllamaError
 from .players import PLAYER_TYPES, build_player
 
 DEFAULT_ROWS = 9
 DEFAULT_COLS = 6
 DEFAULT_PLAYERS = "greedy,greedy,random,random"
+DEFAULT_OLLAMA_MODEL = "qwen3.5:4b"
 MAX_HEADLESS_TURNS = 20000
+
+
+def parse_seat(spec: str) -> tuple[str, str | None]:
+    """Split a seat specification into a player type and its argument.
+
+    Splits on the first colon only, so a model tag that itself contains a
+    colon survives intact: ``ollama:gemma3:4b`` yields ``("ollama", "gemma3:4b")``.
+
+    Parameters
+    ----------
+    spec : str
+        Seat specification from ``--players``.
+
+    Returns
+    -------
+    tuple of (str, str or None)
+        Player type and its optional argument.
+    """
+    kind, _, rest = spec.partition(":")
+    return kind.strip(), (rest.strip() or None)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -36,7 +58,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--players",
         default=DEFAULT_PLAYERS,
-        help=f"comma separated seats, from: {', '.join(sorted(PLAYER_TYPES))}",
+        help=(
+            "comma separated seats from: "
+            f"{', '.join(sorted(PLAYER_TYPES))}. "
+            "Model seats take a tag, for example ollama:gemma3:4b"
+        ),
     )
     parser.add_argument("--seed", type=int, default=None, help="seed for reproducible matches")
     parser.add_argument(
@@ -52,11 +78,36 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--no-debug", action="store_true", help="hide the per-player takeover panel"
     )
+    parser.add_argument(
+        "--illegal-retries",
+        type=int,
+        default=2,
+        help="how many illegal moves a player may return before a random legal one is used",
+    )
+    parser.add_argument("--ollama-host", default=None, help="ollama base url")
+    parser.add_argument(
+        "--llm-timeout", type=float, default=120.0, help="seconds to wait for a model move"
+    )
+    parser.add_argument(
+        "--llm-temperature", type=float, default=0.7, help="sampling temperature for models"
+    )
+    parser.add_argument(
+        "--llm-explain",
+        action="store_true",
+        help="ask models for a one line reason, shown in the panel; costs latency",
+    )
     parser.add_argument("--verbose", action="store_true", help="debug level logging")
     return parser
 
 
-def make_game(rows: int, cols: int, kinds: list[str], rng: random.Random) -> Game:
+def make_game(
+    rows: int,
+    cols: int,
+    seats: list[tuple[str, str | None]],
+    rng: random.Random,
+    args: argparse.Namespace,
+    client: OllamaClient | None = None,
+) -> Game:
     """Build a fresh match.
 
     Parameters
@@ -65,10 +116,14 @@ def make_game(rows: int, cols: int, kinds: list[str], rng: random.Random) -> Gam
         Board height.
     cols : int
         Board width.
-    kinds : list of str
-        Player type names, one per seat.
+    seats : list of tuple
+        Player type and optional argument, one per seat.
     rng : random.Random
-        Randomness source shared with the players.
+        Randomness source shared with the bots.
+    args : argparse.Namespace
+        Parsed arguments, used for model settings.
+    client : OllamaClient or None, optional
+        Shared client for model seats.
 
     Returns
     -------
@@ -76,22 +131,96 @@ def make_game(rows: int, cols: int, kinds: list[str], rng: random.Random) -> Gam
         The new match.
     """
     board = Board(rows, cols)
-    players = [
-        build_player(kind, index, rng=random.Random(rng.getrandbits(64)))
-        for index, kind in enumerate(kinds)
-    ]
-    return Game(board, players, rng=rng)
+    players = []
+    used_names: Counter[str] = Counter()
+    for index, (kind, spec) in enumerate(seats):
+        if kind == "ollama":
+            model = spec or DEFAULT_OLLAMA_MODEL
+            used_names[model] += 1
+            suffix = f" #{used_names[model]}" if used_names[model] > 1 else ""
+            player = build_player(
+                kind,
+                index,
+                name=f"{model}{suffix}",
+                model=model,
+                client=client,
+                temperature=args.llm_temperature,
+                explain=args.llm_explain,
+            )
+        else:
+            player = build_player(kind, index, rng=random.Random(rng.getrandbits(64)))
+        players.append(player)
+    return Game(board, players, illegal_retries=args.illegal_retries, rng=rng)
 
 
-def run_headless(args: argparse.Namespace, kinds: list[str], rng: random.Random) -> int:
+def make_client(args: argparse.Namespace, seats: list[tuple[str, str | None]]):
+    """Create and preflight a shared Ollama client when model seats are used.
+
+    Sharing one client across seats also shares its cache of which models
+    reject the thinking flag.
+
+    Parameters
+    ----------
+    args : argparse.Namespace
+        Parsed arguments.
+    seats : list of tuple
+        Seat specifications.
+
+    Returns
+    -------
+    OllamaClient or None
+        The client, or None when no seat needs one.
+
+    Raises
+    ------
+    SystemExit
+        If the server is unreachable or a requested model is missing.
+    """
+    wanted = {spec or DEFAULT_OLLAMA_MODEL for kind, spec in seats if kind == "ollama"}
+    if not wanted:
+        return None
+    client = OllamaClient(host=args.ollama_host, timeout=args.llm_timeout)
+    try:
+        available = set(client.available_models())
+    except OllamaError as exc:
+        raise SystemExit(f"{exc}\nIs ollama running? Try: ollama serve") from exc
+    missing = sorted(wanted - available)
+    if missing:
+        raise SystemExit(
+            "missing models: "
+            + ", ".join(missing)
+            + "\nPull them first, for example: ollama pull "
+            + missing[0]
+        )
+    return client
+
+
+def report_model_stats(logger, game: Game) -> None:
+    """Log per-model call counts, latency and failure counts.
+
+    Parameters
+    ----------
+    logger : logging.Logger
+        Logger to write to.
+    game : Game
+        Finished match.
+    """
+    for player in game.players:
+        if hasattr(player, "stats_line"):
+            logger.info("%s", player.stats_line())
+
+
+def run_headless(
+    args: argparse.Namespace, seats: list[tuple[str, str | None]], rng: random.Random
+) -> int:
     """Simulate matches with no rendering and report the tally.
 
     Parameters
     ----------
     args : argparse.Namespace
         Parsed arguments.
-    kinds : list of str
-        Player type names.
+    seats : list of tuple
+        Seat specifications.
     rng : random.Random
         Randomness source.
 
@@ -101,10 +230,13 @@ def run_headless(args: argparse.Namespace, kinds: list[str], rng: random.Random)
         Process exit code.
     """
     logger = configure_logging(logging.DEBUG if args.verbose else logging.WARNING)
+    client = make_client(args, seats)
     tally: Counter[str] = Counter()
     turns_total = 0
+    last_game = None
     for index in range(args.games):
-        game = make_game(args.rows, args.cols, kinds, rng)
+        game = make_game(args.rows, args.cols, seats, rng, args, client)
+        last_game = game
         turns = 0
         while not game.over and turns < MAX_HEADLESS_TURNS:
             try:
@@ -121,19 +253,23 @@ def run_headless(args: argparse.Namespace, kinds: list[str], rng: random.Random)
     logger.setLevel(logging.INFO)
     logger.info("played %d games, %d turns total", args.games, turns_total)
     for name, count in tally.most_common():
-        logger.info("%-12s %d", name, count)
+        logger.info("%-20s %d", name, count)
+    if last_game is not None:
+        report_model_stats(logger, last_game)
     return 0 if tally["unfinished"] == 0 else 1
 
 
-def run_visual(args: argparse.Namespace, kinds: list[str], rng: random.Random) -> int:
+def run_visual(
+    args: argparse.Namespace, seats: list[tuple[str, str | None]], rng: random.Random
+) -> int:
     """Run one match in a pygame window.
 
     Parameters
     ----------
     args : argparse.Namespace
         Parsed arguments.
-    kinds : list of str
-        Player type names.
+    seats : list of tuple
+        Seat specifications.
     rng : random.Random
         Randomness source.
 
@@ -149,7 +285,8 @@ def run_visual(args: argparse.Namespace, kinds: list[str], rng: random.Random) -
         logger.error("pygame is not available; rerun with --headless")
         return 2
 
-    game = make_game(args.rows, args.cols, kinds, rng)
+    client = make_client(args, seats)
+    game = make_game(args.rows, args.cols, seats, rng, args, client)
     try:
         app = GameApp(
             game,
@@ -163,6 +300,7 @@ def run_visual(args: argparse.Namespace, kinds: list[str], rng: random.Random) -
         logger.exception("could not open a window; rerun with --headless")
         return 2
     app.run()
+    report_model_stats(logger, game)
     return 0
 
 
@@ -179,17 +317,18 @@ def main(argv: list[str] | None = None) -> int:
     int
         Process exit code.
     """
-    args = build_parser().parse_args(argv)
-    kinds = [kind.strip() for kind in args.players.split(",") if kind.strip()]
-    if len(kinds) < 2:
-        build_parser().error("need at least two players")
-    unknown = sorted(set(kinds) - set(PLAYER_TYPES))
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    seats = [parse_seat(spec) for spec in args.players.split(",") if spec.strip()]
+    if len(seats) < 2:
+        parser.error("need at least two players")
+    unknown = sorted({kind for kind, _ in seats} - set(PLAYER_TYPES))
     if unknown:
-        build_parser().error(f"unknown player types: {', '.join(unknown)}")
+        parser.error(f"unknown player types: {', '.join(unknown)}")
     rng = random.Random(args.seed)
     if args.headless:
-        return run_headless(args, kinds, rng)
-    return run_visual(args, kinds, rng)
+        return run_headless(args, seats, rng)
+    return run_visual(args, seats, rng)
 
 
 if __name__ == "__main__":
