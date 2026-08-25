@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass
 
 import pygame
@@ -15,7 +16,7 @@ from .animation import (
     ease_in_out_cubic,
     ease_out_back,
 )
-from .board import BoardSnapshot
+from .board import BoardSnapshot, IllegalMoveError
 from .game import Game
 from .logging_config import get_logger
 
@@ -102,6 +103,9 @@ class GameApp:
         Draw trailing ghosts behind flying orbs, by default True.
     debug : bool, optional
         Show the per-player takeover panel, by default True.
+    threaded : bool, optional
+        Ask players for their move on a worker thread so a slow player, such as
+        a local language model, does not freeze the window, by default True.
     """
 
     def __init__(
@@ -112,6 +116,7 @@ class GameApp:
         animate: bool = True,
         motion_blur: bool = True,
         debug: bool = True,
+        threaded: bool = True,
     ) -> None:
         self.game = game
         self.move_delay = move_delay
@@ -129,6 +134,11 @@ class GameApp:
         self.clock_time = 0.0
         self.buttons: list[Button] = []
         self.running = False
+        self.threaded = threaded
+        self.executor = ThreadPoolExecutor(max_workers=1) if threaded else None
+        self.thinking: Future | None = None
+        self.think_started = 0.0
+        self.status = ""
 
         self.cell = self._compute_cell_size()
         self.board_w = self.cell * game.board.cols
@@ -174,6 +184,8 @@ class GameApp:
             self._advance(dt)
             self._draw()
             pygame.display.flip()
+        if self.executor is not None:
+            self.executor.shutdown(wait=False, cancel_futures=True)
         pygame.quit()
         return self.game.winner
 
@@ -192,6 +204,9 @@ class GameApp:
             return
         if self.game.over:
             return
+        if self.thinking is not None:
+            self._collect_thought()
+            return
         self.time_since_move += dt
         wants_move = self.pending_step or (
             self.auto_play and self.time_since_move >= self.move_delay
@@ -200,12 +215,56 @@ class GameApp:
             return
         self.pending_step = False
         self.time_since_move = 0.0
+        if self.executor is not None:
+            self.think_started = self.clock_time
+            self.thinking = self.executor.submit(self.game.ask_current_player)
+            return
         try:
             result = self.game.step()
         except RuntimeError as exc:
             logger.warning("turn skipped: %s", exc)
             return
+        self._show_move(result)
+
+    def _collect_thought(self) -> None:
+        """Apply a move once the worker thread has produced one."""
+        assert self.thinking is not None
+        if not self.thinking.done():
+            return
+        future, self.thinking = self.thinking, None
+        try:
+            row, col, used_fallback = future.result()
+        except RuntimeError as exc:
+            logger.warning("turn skipped: %s", exc)
+            return
+        except Exception:
+            logger.exception("player failed to produce a move")
+            return
+        try:
+            result = self.game.commit_turn(row, col, used_fallback=used_fallback)
+        except IllegalMoveError as exc:
+            logger.warning("discarding move: %s", exc)
+            return
+        self._show_move(result)
+
+    def _show_move(self, result) -> None:
+        """Start animating a completed turn and refresh the status line.
+
+        Parameters
+        ----------
+        result : TurnResult
+            The turn to display.
+        """
         self.animator.load(result.placement)
+        name = self.game.player_by_id(result.player_id).name
+        reason = getattr(self.game.player_by_id(result.player_id), "last_reason", "")
+        where = f"({result.placement.row},{result.placement.col})"
+        if result.used_fallback:
+            self.status = f"{name} {where} fallback"
+        elif reason:
+            self.status = f"{name} {where}: {reason}"
+        else:
+            self.status = f"{name} {where}"
 
     def _handle_events(self) -> None:
         """Drain the pygame event queue."""
@@ -305,7 +364,7 @@ class GameApp:
         """
         if not self.debug or self.armed_player is None:
             return
-        if self.animator.busy or self.game.over:
+        if self.animator.busy or self.game.over or self.thinking is not None:
             return
         if self.armed_player in self.game.eliminated:
             self._flash(row, col)
@@ -665,6 +724,17 @@ class GameApp:
 
         y += 8
         y = self._draw_controls(x, y)
+        y += 6
+
+        hints = [
+            "space  pause / resume",
+            "s  single step",
+            "enter  skip animation",
+            "esc  quit",
+        ]
+        hints_top = panel.bottom - 18 * len(hints) - 12
+        y = self._draw_status(x, y, hints_top)
+        y = self._draw_model_stats(x, y, hints_top)
 
         if self.game.over:
             y += 10
@@ -676,11 +746,113 @@ class GameApp:
                 color = player_color(self.game.winner)
             self.screen.blit(self.font.render(text, True, color), (x + 16, y))
 
-        hints = ["space  pause / resume", "s  single step", "enter  skip animation", "esc  quit"]
-        hy = panel.bottom - 18 * len(hints) - 12
+        hy = hints_top
         for hint in hints:
             self.screen.blit(self.font_small.render(hint, True, COLOR_MUTED), (x + 16, hy))
             hy += 18
+
+    def _wrap(self, text: str, font: pygame.font.Font, width: int) -> list[str]:
+        """Break text into lines that fit a pixel width.
+
+        Parameters
+        ----------
+        text : str
+            Text to wrap.
+        font : pygame.font.Font
+            Font the text will be rendered with.
+        width : int
+            Available width in pixels.
+
+        Returns
+        -------
+        list of str
+            Wrapped lines.
+        """
+        lines: list[str] = []
+        current = ""
+        for word in text.split():
+            candidate = f"{current} {word}".strip()
+            if font.size(candidate)[0] <= width or not current:
+                current = candidate
+            else:
+                lines.append(current)
+                current = word
+        if current:
+            lines.append(current)
+        return lines
+
+    def _draw_status(self, x: int, y: int, limit: int) -> int:
+        """Draw the thinking indicator or the last move summary.
+
+        Parameters
+        ----------
+        x : int
+            Panel left edge.
+        y : int
+            Row top.
+        limit : int
+            Y coordinate the block must not grow past.
+
+        Returns
+        -------
+        int
+            The next free y coordinate.
+        """
+        if self.thinking is not None and not self.game.over:
+            elapsed = self.clock_time - self.think_started
+            dots = "." * (1 + int(elapsed * 2) % 3)
+            name = self.game.current_player().name
+            text = f"{name} thinking{dots} {elapsed:.1f}s"
+            color = player_color(self.game.current_player().player_id)
+        else:
+            text = self.status
+            color = COLOR_MUTED
+        if not text:
+            return y
+        drawn = 0
+        for line in self._wrap(text, self.font_small, PANEL_WIDTH - 32)[:3]:
+            if y + 18 > limit:
+                break
+            self.screen.blit(self.font_small.render(line, True, color), (x + 16, y))
+            y += 18
+            drawn += 1
+        return y + 6 if drawn else y
+
+    def _draw_model_stats(self, x: int, y: int, limit: int) -> int:
+        """Draw per-model call counts and latency, when any model is playing.
+
+        Parameters
+        ----------
+        x : int
+            Panel left edge.
+        y : int
+            Row top.
+        limit : int
+            Y coordinate the block must not grow past. The block is dropped
+            entirely rather than drawn on top of the shortcut hints.
+
+        Returns
+        -------
+        int
+            The next free y coordinate.
+        """
+        rows = [p for p in self.game.players if hasattr(p, "average_latency")]
+        if not rows or y + 18 + 17 * len(rows) > limit:
+            return y
+        self.screen.blit(self.font_small.render("models", True, COLOR_MUTED), (x + 16, y))
+        y += 18
+        for player in rows:
+            summary = f"{player.calls} calls  {player.average_latency:.1f}s"
+            if player.illegal or player.errors:
+                summary += f"  {player.illegal}il {player.errors}er"
+            self.screen.blit(
+                self.font_small.render(player.name[:16], True, player_color(player.player_id)),
+                (x + 16, y),
+            )
+            surf = self.font_small.render(summary, True, COLOR_MUTED)
+            self.screen.blit(surf, (x + PANEL_WIDTH - 16 - surf.get_width(), y))
+            y += 17
+        return y + 6
 
     def _draw_player_row(
         self,
