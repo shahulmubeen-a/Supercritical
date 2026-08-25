@@ -6,8 +6,8 @@ from itertools import pairwise
 
 import pytest
 
-from instagame.animation import PHASE_CASCADE, PHASE_PLACE, Animator, ease_in_out_cubic
-from instagame.board import Board
+from supercritical.animation import PHASE_CASCADE, PHASE_PLACE, Animator, ease_in_out_cubic
+from supercritical.board import Board
 
 
 @pytest.mark.parametrize(

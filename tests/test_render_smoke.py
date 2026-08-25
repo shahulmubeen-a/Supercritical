@@ -13,11 +13,11 @@ os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
 
 pygame = pytest.importorskip("pygame")
 
-from instagame.board import Board  # noqa: E402
-from instagame.game import Game  # noqa: E402
-from instagame.players import build_player  # noqa: E402
-from instagame.players.base import Player  # noqa: E402
-from instagame.render import GameApp  # noqa: E402
+from supercritical.board import Board  # noqa: E402
+from supercritical.game import Game  # noqa: E402
+from supercritical.players import build_player  # noqa: E402
+from supercritical.players.base import Player  # noqa: E402
+from supercritical.render import GameApp  # noqa: E402
 
 
 @pytest.fixture

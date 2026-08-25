@@ -6,9 +6,9 @@ import random
 
 import pytest
 
-from instagame.board import Board
-from instagame.players import PLAYER_TYPES, build_player
-from instagame.players.greedy_player import GreedyPlayer
+from supercritical.board import Board
+from supercritical.players import PLAYER_TYPES, build_player
+from supercritical.players.greedy_player import GreedyPlayer
 
 OFFLINE_TYPES = sorted(PLAYER_TYPES)
 
@@ -60,7 +60,7 @@ def test_the_removed_model_backend_is_no_longer_registered() -> None:
     """Guards the Ollama removal: the seat type and its module are both gone."""
     assert "ollama" not in PLAYER_TYPES
     with pytest.raises(ImportError):
-        import instagame.ollama  # noqa: F401
+        import supercritical.ollama  # noqa: F401
 
 
 def test_greedy_prefers_a_capture_over_an_empty_corner() -> None:
@@ -90,7 +90,7 @@ def test_greedy_avoids_sitting_next_to_a_loaded_enemy() -> None:
 
 
 def test_greedy_beats_random_over_a_series() -> None:
-    from instagame.game import Game
+    from supercritical.game import Game
 
     rng = random.Random(11)
     wins = {"greedy": 0, "random": 0}

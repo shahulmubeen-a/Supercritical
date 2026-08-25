@@ -1,7 +1,16 @@
-# InstaGame
+# Supercritical
 
-A turn-based orb cascade game on a rectangular grid, built as a testbed for
-pitting different AI players against each other.
+[![CI](https://github.com/shahulmubeen-a/Supercritical-AI/actions/workflows/ci.yml/badge.svg)](https://github.com/shahulmubeen-a/Supercritical-AI/actions/workflows/ci.yml)
+![Python](https://img.shields.io/badge/python-3.12-blue)
+![Licence](https://img.shields.io/badge/licence-proprietary-lightgrey)
+![Version](https://img.shields.io/badge/version-1.0.0-brightgreen)
+
+A turn-based orb cascade game on a rectangular grid, and a testbed for pitting
+heuristic strategies against each other. Eighteen of them ship with it, from a
+random baseline to a two-ply opponent model.
+
+Cells explode when they hold as many orbs as they have neighbours, and the
+explosion converts everything it touches. One move can take the board.
 
 ## Rules
 
@@ -21,14 +30,14 @@ pitting different AI players against each other.
 ## Running
 
 ```bash
-uv run instagame
+uv run supercritical
 ```
 
 Defaults to a 6-wide by 9-tall board with two greedy bots and two random bots.
 
 ```bash
-uv run instagame --rows 20 --cols 10 --players greedy,greedy,greedy,random
-uv run instagame --headless --games 200 --seed 7
+uv run supercritical --rows 20 --cols 10 --players greedy,greedy,greedy,random
+uv run supercritical --headless --games 200 --seed 7
 ```
 
 `--rows` is the board height, `--cols` the width.
@@ -70,8 +79,8 @@ about how to win, so a match between them reads as an argument rather than a set
 of tuning variants.
 
 ```bash
-uv run instagame --list-players
-uv run instagame --players sentinel,retaliator,corner,loader
+uv run supercritical --list-players
+uv run supercritical --players sentinel,retaliator,corner,loader
 ```
 
 **Positional** — look only at the cell and its neighbours, so they cost nothing:
@@ -114,7 +123,7 @@ same amount and it is not a fair table otherwise:
 The game is deterministic and fully observable, so simulating your own move is
 arithmetic a human does in their head rather than hidden information. Still,
 comparing zero-ply against two-ply in one table measures search budget as much
-as strategy. `uv run instagame --list-players` prints the divisions.
+as strategy. `uv run supercritical --list-players` prints the divisions.
 
 ### Positional division
 
@@ -174,7 +183,7 @@ them as directional. The 6x5 tables are far firmer.
 Any match can be recorded and played back later:
 
 ```bash
-uv run instagame --headless --rows 6 --cols 5 --record replays/match.html \
+uv run supercritical --headless --rows 6 --cols 5 --record replays/match.html \
   --title "loader vs sentinel" \
   --players loader,sentinel,greedy,random
 ```
@@ -210,14 +219,14 @@ comes back, retrying and then substituting a random legal move, so a slow or
 unreliable player cannot corrupt the game state.
 
 ```python
-from instagame.players.base import Player
+from supercritical.players.base import Player
 
 class MyPlayer(Player):
     def choose_move(self, board):
         return board.legal_moves(self.player_id)[0]
 ```
 
-Register it in `PLAYER_TYPES` in `src/instagame/players/__init__.py` to make it
+Register it in `PLAYER_TYPES` in `src/supercritical/players/__init__.py` to make it
 selectable from `--players`, and set `tier` so it is ranked against players that
 search as far as it does. The engine validates whatever a player returns and
 never trusts it: an illegal move is retried, then replaced with a random legal
@@ -227,7 +236,7 @@ game.
 For a strategy that scores candidate moves, subclass `ScoringPlayer` and
 implement `score`; to judge moves by playing them out, subclass
 `SimulatingPlayer` and implement `rate`. See
-`src/instagame/players/strategies.py`.
+`src/supercritical/players/strategies.py`.
 
 ## Development
 
@@ -236,3 +245,27 @@ uv run pytest
 uv run ruff check .
 uv run black .
 ```
+
+## Versioning
+
+[Semantic versioning](https://semver.org/spec/v2.0.0.html). The public surface
+is the `supercritical` CLI, the `Player` interface and the replay format
+version. Changes are recorded in [CHANGELOG.md](CHANGELOG.md) and tagged
+`vMAJOR.MINOR.PATCH`.
+
+## Credits
+
+Built by Mohamed Shahul Mubeen A, in collaboration with
+[Claude](https://claude.com/claude-code) (Anthropic), which co-authored the
+engine, strategies, replay viewer and test suite. Co-authorship is recorded in
+the `Co-Authored-By` trailer on the relevant commits:
+
+```bash
+git log --format='%an <%ae>%n%(trailers:key=Co-Authored-By,valueonly)' | sort -u
+```
+
+## Licence
+
+Proprietary. Copyright (c) 2026 Mohamed Shahul Mubeen A, all rights reserved.
+This is a private project and is not open for contributions or reuse. See
+[LICENSE](LICENSE).

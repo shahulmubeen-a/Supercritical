@@ -31,7 +31,7 @@ def build_parser() -> argparse.ArgumentParser:
         The configured parser.
     """
     parser = argparse.ArgumentParser(
-        prog="instagame",
+        prog="supercritical",
         description="Turn-based orb cascade game with bot players.",
     )
     parser.add_argument("--rows", type=int, default=DEFAULT_ROWS, help="board height")

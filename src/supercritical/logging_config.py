@@ -8,7 +8,7 @@ from __future__ import annotations
 import logging
 import sys
 
-LOGGER_NAME = "instagame"
+LOGGER_NAME = "supercritical"
 _DEFAULT_FORMAT = "%(asctime)s %(levelname)-7s %(name)s: %(message)s"
 
 

@@ -33,7 +33,7 @@ def build_page(replay: dict, title: str = DEFAULT_TITLE) -> str:
     Parameters
     ----------
     replay : dict
-        Replay produced by :meth:`instagame.replay.Recorder.to_dict`.
+        Replay produced by :meth:`supercritical.replay.Recorder.to_dict`.
     title : str, optional
         Page title, by default ``"Supercritical"``.
 

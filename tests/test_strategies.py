@@ -6,10 +6,10 @@ import random
 
 import pytest
 
-from instagame.board import Board
-from instagame.game import Game
-from instagame.players import STRATEGY_TYPES, build_player, offline_types
-from instagame.players.tactics import (
+from supercritical.board import Board
+from supercritical.game import Game
+from supercritical.players import STRATEGY_TYPES, build_player, offline_types
+from supercritical.players.tactics import (
     enemy_orbs_adjacent,
     friendly_neighbours,
     simulate,
@@ -277,7 +277,7 @@ def test_loader_arms_cells_that_point_at_the_enemy() -> None:
 
 
 def test_every_player_declares_a_search_tier() -> None:
-    from instagame.players import PLAYER_TYPES, offline_types, types_in_tier
+    from supercritical.players import PLAYER_TYPES, offline_types, types_in_tier
 
     positional = types_in_tier("positional")
     simulating = types_in_tier("simulating")
@@ -291,8 +291,8 @@ def test_every_player_declares_a_search_tier() -> None:
 
 def test_positional_strategies_never_simulate(monkeypatch) -> None:
     """A positional player must not reach for the simulation helper."""
-    import instagame.players.strategies as strategies
-    from instagame.players import types_in_tier
+    import supercritical.players.strategies as strategies
+    from supercritical.players import types_in_tier
 
     def forbidden(*args, **kwargs):
         raise AssertionError("positional strategy called simulate()")
