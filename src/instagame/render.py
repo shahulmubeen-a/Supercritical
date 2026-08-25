@@ -106,7 +106,7 @@ class GameApp:
         Show the per-player takeover panel, by default True.
     threaded : bool, optional
         Ask players for their move on a worker thread so a slow player, such as
-        a local language model, does not freeze the window, by default True.
+        a deep searching strategy, does not freeze the window, by default True.
     on_turn : callable or None, optional
         Called with each completed TurnResult, used for replay recording.
     """
@@ -264,14 +264,8 @@ class GameApp:
             self.on_turn(result)
         self.animator.load(result.placement)
         name = self.game.player_by_id(result.player_id).name
-        reason = getattr(self.game.player_by_id(result.player_id), "last_reason", "")
         where = f"({result.placement.row},{result.placement.col})"
-        if result.used_fallback:
-            self.status = f"{name} {where} fallback"
-        elif reason:
-            self.status = f"{name} {where}: {reason}"
-        else:
-            self.status = f"{name} {where}"
+        self.status = f"{name} {where} fallback" if result.used_fallback else f"{name} {where}"
 
     def _handle_events(self) -> None:
         """Drain the pygame event queue."""
@@ -741,7 +735,6 @@ class GameApp:
         ]
         hints_top = panel.bottom - 18 * len(hints) - 12
         y = self._draw_status(x, y, hints_top)
-        y = self._draw_model_stats(x, y, hints_top)
 
         if self.game.over:
             y += 10
@@ -824,42 +817,6 @@ class GameApp:
             y += 18
             drawn += 1
         return y + 6 if drawn else y
-
-    def _draw_model_stats(self, x: int, y: int, limit: int) -> int:
-        """Draw per-model call counts and latency, when any model is playing.
-
-        Parameters
-        ----------
-        x : int
-            Panel left edge.
-        y : int
-            Row top.
-        limit : int
-            Y coordinate the block must not grow past. The block is dropped
-            entirely rather than drawn on top of the shortcut hints.
-
-        Returns
-        -------
-        int
-            The next free y coordinate.
-        """
-        rows = [p for p in self.game.players if hasattr(p, "average_latency")]
-        if not rows or y + 18 + 17 * len(rows) > limit:
-            return y
-        self.screen.blit(self.font_small.render("models", True, COLOR_MUTED), (x + 16, y))
-        y += 18
-        for player in rows:
-            summary = f"{player.calls} calls  {player.average_latency:.1f}s"
-            if player.illegal or player.errors:
-                summary += f"  {player.illegal}il {player.errors}er"
-            self.screen.blit(
-                self.font_small.render(player.name[:16], True, player_color(player.player_id)),
-                (x + 16, y),
-            )
-            surf = self.font_small.render(summary, True, COLOR_MUTED)
-            self.screen.blit(surf, (x + PANEL_WIDTH - 16 - surf.get_width(), y))
-            y += 17
-        return y + 6
 
     def _draw_player_row(
         self,

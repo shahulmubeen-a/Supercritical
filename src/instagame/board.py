@@ -306,6 +306,20 @@ class Board:
         """
         return sum(cell.count for _, _, cell in self.iter_cells())
 
+    def stable_capacity(self) -> int:
+        """Return the most orbs the board can hold without exploding.
+
+        The sum over every cell of one below its critical mass. A board holding
+        more than this can never settle, which is the only way a cascade runs
+        forever.
+
+        Returns
+        -------
+        int
+            Maximum stable orb total.
+        """
+        return sum(self.critical_mass(r, c) - 1 for r in range(self.rows) for c in range(self.cols))
+
     def is_settled(self) -> bool:
         """Return whether no cell is at or above its critical mass.
 
@@ -392,6 +406,75 @@ class Board:
             steps=tuple(steps),
             truncated=truncated,
         )
+
+    def apply_unrecorded(
+        self,
+        row: int,
+        col: int,
+        player: int,
+        on_settle_check: Callable[[Board], bool] | None = None,
+        max_steps: int = DEFAULT_MAX_CASCADE_STEPS,
+    ) -> int:
+        """Place an orb and resolve the cascade without capturing snapshots.
+
+        :meth:`place` records three board copies per cascade wave so the
+        renderer can animate it. Strategy code simulating hundreds of candidate
+        moves per turn does not need them, and the copying dominates its cost.
+
+        Parameters
+        ----------
+        row : int
+            Row index.
+        col : int
+            Column index.
+        player : int
+            Player placing the orb.
+        on_settle_check : callable or None, optional
+            Early-abort predicate evaluated after each wave.
+        max_steps : int, optional
+            Hard ceiling on cascade waves.
+
+        Returns
+        -------
+        int
+            Number of cascade waves resolved.
+
+        Raises
+        ------
+        IllegalMoveError
+            If the target cell is off the board or owned by another player.
+        """
+        if not self.is_legal(row, col, player):
+            raise IllegalMoveError(f"player {player} may not place at ({row}, {col})")
+        cell = self.cells[row][col]
+        cell.count += 1
+        cell.owner = player
+
+        waves = 0
+        while waves < max_steps:
+            unstable = self._unstable_cells()
+            if not unstable:
+                break
+            pending: list[tuple[int, int, int]] = []
+            for r, c in unstable:
+                target = self.cells[r][c]
+                owner = target.owner
+                if owner is None:
+                    continue
+                mass = self.critical_mass(r, c)
+                target.count -= mass
+                if target.count == 0:
+                    target.owner = None
+                for nr, nc in self.neighbours(r, c):
+                    pending.append((nr, nc, owner))
+            for nr, nc, owner in pending:
+                neighbour = self.cells[nr][nc]
+                neighbour.count += 1
+                neighbour.owner = owner
+            waves += 1
+            if on_settle_check is not None and on_settle_check(self):
+                break
+        return waves
 
     def _unstable_cells(self) -> list[tuple[int, int]]:
         """Return coordinates of every cell at or above critical mass.
