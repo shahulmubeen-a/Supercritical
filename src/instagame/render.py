@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+from collections.abc import Callable
 from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass
 
@@ -106,6 +107,8 @@ class GameApp:
     threaded : bool, optional
         Ask players for their move on a worker thread so a slow player, such as
         a local language model, does not freeze the window, by default True.
+    on_turn : callable or None, optional
+        Called with each completed TurnResult, used for replay recording.
     """
 
     def __init__(
@@ -117,6 +120,7 @@ class GameApp:
         motion_blur: bool = True,
         debug: bool = True,
         threaded: bool = True,
+        on_turn: Callable[[object], None] | None = None,
     ) -> None:
         self.game = game
         self.move_delay = move_delay
@@ -135,6 +139,7 @@ class GameApp:
         self.buttons: list[Button] = []
         self.running = False
         self.threaded = threaded
+        self.on_turn = on_turn
         self.executor = ThreadPoolExecutor(max_workers=1) if threaded else None
         self.thinking: Future | None = None
         self.think_started = 0.0
@@ -255,6 +260,8 @@ class GameApp:
         result : TurnResult
             The turn to display.
         """
+        if self.on_turn is not None:
+            self.on_turn(result)
         self.animator.load(result.placement)
         name = self.game.player_by_id(result.player_id).name
         reason = getattr(self.game.player_by_id(result.player_id), "last_reason", "")
