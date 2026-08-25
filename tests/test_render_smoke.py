@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import random
+import time
 
 import pytest
 
@@ -15,6 +16,7 @@ pygame = pytest.importorskip("pygame")
 from instagame.board import Board  # noqa: E402
 from instagame.game import Game  # noqa: E402
 from instagame.players import build_player  # noqa: E402
+from instagame.players.base import Player  # noqa: E402
 from instagame.render import GameApp  # noqa: E402
 
 
@@ -30,7 +32,7 @@ def app():
     rng = random.Random(5)
     players = [build_player(k, i, rng=random.Random(i)) for i, k in enumerate(["greedy"] * 4)]
     game = Game(Board(6, 5), players, rng=rng)
-    instance = GameApp(game, move_delay=0.0, anim_speed=6.0)
+    instance = GameApp(game, move_delay=0.0, anim_speed=6.0, threaded=False)
     yield instance
     pygame.quit()
 
@@ -91,3 +93,47 @@ def test_control_buttons_toggle_playback(app: GameApp) -> None:
     assert app.pending_step is True
     app._advance(1 / 60)
     assert app.game.turn_number == 1
+
+
+class SlowPlayer(Player):
+    """Blocks briefly before answering, standing in for a model call.
+
+    Parameters
+    ----------
+    player_id : int
+        Seat id.
+    delay : float, optional
+        Seconds to sleep inside ``choose_move``.
+    """
+
+    def __init__(self, player_id: int, delay: float = 0.15) -> None:
+        super().__init__(player_id, f"slow-{player_id}")
+        self.delay = delay
+        self.last_reason = "took my time"
+
+    def choose_move(self, board):
+        time.sleep(self.delay)
+        return board.legal_moves(self.player_id)[0]
+
+
+def test_threaded_mode_keeps_drawing_while_a_player_thinks() -> None:
+    game = Game(Board(5, 4), [SlowPlayer(0), SlowPlayer(1)], rng=random.Random(0))
+    app = GameApp(game, move_delay=0.0, threaded=True)
+    try:
+        frames_while_thinking = 0
+        deadline = time.monotonic() + 10.0
+        while game.turn_number < 2 and time.monotonic() < deadline:
+            app._advance(1 / 60)
+            app._draw()
+            if app.thinking is not None:
+                frames_while_thinking += 1
+
+        assert game.turn_number >= 2
+        assert frames_while_thinking > 5
+        assert "slow-" in app.status
+        assert "took my time" in app.status
+    finally:
+        app.running = False
+        if app.executor is not None:
+            app.executor.shutdown(wait=True, cancel_futures=True)
+        pygame.quit()
