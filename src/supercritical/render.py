@@ -153,7 +153,7 @@ class GameApp:
         self.board_origin = (MARGIN, (height - self.board_h) // 2)
 
         pygame.init()
-        pygame.display.set_caption("InstaGame")
+        pygame.display.set_caption("Supercritical")
         self.screen = pygame.display.set_mode((width, height))
         self.clock = pygame.time.Clock()
         self.font = pygame.font.Font(None, 24)
@@ -708,7 +708,7 @@ class GameApp:
         pygame.draw.rect(self.screen, COLOR_PANEL, panel, border_radius=8)
 
         y = panel.top + 16
-        self.screen.blit(self.font_big.render("InstaGame", True, COLOR_TEXT), (x + 16, y))
+        self.screen.blit(self.font_big.render("Supercritical", True, COLOR_TEXT), (x + 16, y))
         y += 38
         status = f"turn {self.game.turn_number}"
         if self.game.over:

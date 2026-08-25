@@ -8,11 +8,11 @@ import re
 
 import pytest
 
-from instagame.board import Board
-from instagame.game import Game
-from instagame.players import build_player
-from instagame.replay import EMPTY_OWNER, REPLAY_VERSION, Recorder, encode_grid
-from instagame.viewer import build_page, write_page
+from supercritical.board import Board
+from supercritical.game import Game
+from supercritical.players import build_player
+from supercritical.replay import EMPTY_OWNER, REPLAY_VERSION, Recorder, encode_grid
+from supercritical.viewer import build_page, write_page
 
 
 @pytest.fixture

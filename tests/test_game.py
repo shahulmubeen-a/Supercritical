@@ -6,10 +6,10 @@ import random
 
 import pytest
 
-from instagame.board import Board
-from instagame.game import Game
-from instagame.players import build_player
-from instagame.players.base import Player
+from supercritical.board import Board
+from supercritical.game import Game
+from supercritical.players import build_player
+from supercritical.players.base import Player
 
 
 class ScriptedPlayer(Player):

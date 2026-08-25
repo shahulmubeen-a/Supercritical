@@ -1,18 +1,39 @@
 [project]
-name = "instagame"
-version = "0.1.0"
-description = "Turn-based orb cascade game with pluggable AI players"
+name = "supercritical"
+version = "1.0.0"
+description = "A turn-based orb cascade game where heuristic strategies fight for the board"
 readme = "README.md"
+license-files = ["LICENSE"]
 authors = [
     { name = "Mohamed Shahul Mubeen A", email = "mohamedshahulmubeen.a@smitechgroup.com" }
+]
+maintainers = [
+    { name = "Mohamed Shahul Mubeen A", email = "mohamedshahulmubeen.a@smitechgroup.com" }
+]
+keywords = ["game", "pygame", "chain-reaction", "ai", "heuristics", "simulation"]
+classifiers = [
+    "Private :: Do Not Upload",
+    "Development Status :: 5 - Production/Stable",
+    "License :: Other/Proprietary License",
+    "Environment :: X11 Applications",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Games/Entertainment :: Board Games",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
 requires-python = ">=3.12"
 dependencies = [
     "pygame-ce>=2.5.8",
 ]
 
+[project.urls]
+Homepage = "https://github.com/shahulmubeen-a/Supercritical"
+Repository = "https://github.com/shahulmubeen-a/Supercritical"
+Issues = "https://github.com/shahulmubeen-a/Supercritical/issues"
+Changelog = "https://github.com/shahulmubeen-a/Supercritical/blob/main/CHANGELOG.md"
+
 [project.scripts]
-instagame = "instagame.cli:main"
+supercritical = "supercritical.cli:main"
 
 [build-system]
 requires = ["uv_build>=0.11.2,<0.12.0"]
