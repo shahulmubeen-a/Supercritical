@@ -1,0 +1,41 @@
+[project]
+name = "instagame"
+version = "0.1.0"
+description = "Turn-based orb cascade game with pluggable AI players"
+readme = "README.md"
+authors = [
+    { name = "Mohamed Shahul Mubeen A", email = "mohamedshahulmubeen.a@smitechgroup.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "pygame-ce>=2.5.8",
+]
+
+[project.scripts]
+instagame = "instagame.cli:main"
+
+[build-system]
+requires = ["uv_build>=0.11.2,<0.12.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "black>=26.5.1",
+    "pytest>=9.1.1",
+    "ruff>=0.16.4",
+]
+
+[tool.black]
+line-length = 100
+target-version = ["py312"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "RUF"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
