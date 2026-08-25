@@ -4,14 +4,15 @@ from __future__ import annotations
 
 import argparse
 import logging
+import os
 import random
 import sys
 from collections import Counter
 
 from .board import Board
 from .game import Game
-from .logging_config import configure_logging
-from .ollama import OllamaClient, OllamaError
+from .logging_config import configure_logging, get_logger
+from .ollama import OllamaClient, OllamaError, resolve_model_tag
 from .players import PLAYER_TYPES, build_player
 
 DEFAULT_ROWS = 9
@@ -153,8 +154,10 @@ def make_game(
     return Game(board, players, illegal_retries=args.illegal_retries, rng=rng)
 
 
-def make_client(args: argparse.Namespace, seats: list[tuple[str, str | None]]):
-    """Create and preflight a shared Ollama client when model seats are used.
+def make_client(
+    args: argparse.Namespace, seats: list[tuple[str, str | None]]
+) -> tuple[OllamaClient | None, list[tuple[str, str | None]]]:
+    """Preflight Ollama and resolve model names to the tags it actually holds.
 
     Sharing one client across seats also shares its cache of which models
     reject the thinking flag.
@@ -168,8 +171,9 @@ def make_client(args: argparse.Namespace, seats: list[tuple[str, str | None]]):
 
     Returns
     -------
-    OllamaClient or None
-        The client, or None when no seat needs one.
+    tuple
+        The client, or None when no seat needs one, and the seat list with
+        model names resolved to canonical tags.
 
     Raises
     ------
@@ -178,13 +182,15 @@ def make_client(args: argparse.Namespace, seats: list[tuple[str, str | None]]):
     """
     wanted = {spec or DEFAULT_OLLAMA_MODEL for kind, spec in seats if kind == "ollama"}
     if not wanted:
-        return None
+        return None, seats
     client = OllamaClient(host=args.ollama_host, timeout=args.llm_timeout)
     try:
         available = set(client.available_models())
     except OllamaError as exc:
         raise SystemExit(f"{exc}\nIs ollama running? Try: ollama serve") from exc
-    missing = sorted(wanted - available)
+
+    resolved = {name: resolve_model_tag(name, available) for name in wanted}
+    missing = sorted(name for name, tag in resolved.items() if tag is None)
     if missing:
         raise SystemExit(
             "missing models: "
@@ -192,7 +198,19 @@ def make_client(args: argparse.Namespace, seats: list[tuple[str, str | None]]):
             + "\nPull them first, for example: ollama pull "
             + missing[0]
         )
-    return client
+    limit = int(os.environ.get("OLLAMA_MAX_LOADED_MODELS") or 0)
+    if len(wanted) > 1 and 0 < limit < len(wanted):
+        get_logger("cli").warning(
+            "%d models in play but OLLAMA_MAX_LOADED_MODELS is %d; "
+            "ollama will unload between turns and each reload costs more than the move",
+            len(wanted),
+            limit,
+        )
+    seats = [
+        (kind, resolved[spec or DEFAULT_OLLAMA_MODEL] if kind == "ollama" else spec)
+        for kind, spec in seats
+    ]
+    return client, seats
 
 
 def report_model_stats(logger, game: Game) -> None:
@@ -230,7 +248,7 @@ def run_headless(
         Process exit code.
     """
     logger = configure_logging(logging.DEBUG if args.verbose else logging.WARNING)
-    client = make_client(args, seats)
+    client, seats = make_client(args, seats)
     tally: Counter[str] = Counter()
     turns_total = 0
     last_game = None
@@ -285,7 +303,7 @@ def run_visual(
         logger.error("pygame is not available; rerun with --headless")
         return 2
 
-    client = make_client(args, seats)
+    client, seats = make_client(args, seats)
     game = make_game(args.rows, args.cols, seats, rng, args, client)
     try:
         app = GameApp(

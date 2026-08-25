@@ -11,7 +11,13 @@ import pytest
 
 from instagame.board import Board
 from instagame.game import Game
-from instagame.ollama import Completion, OllamaClient, OllamaError, normalise_host
+from instagame.ollama import (
+    Completion,
+    OllamaClient,
+    OllamaError,
+    normalise_host,
+    resolve_model_tag,
+)
 from instagame.players import build_player
 from instagame.players.base import Player
 from instagame.players.llm_player import (
@@ -227,3 +233,18 @@ def test_parse_move_recovers_from_truncated_output(text: str, expected: tuple) -
 def test_truncated_output_without_coordinates_still_raises() -> None:
     with pytest.raises(ValueError):
         parse_move('{"why": "I was thinking about')
+
+
+@pytest.mark.parametrize(
+    "name,expected",
+    [
+        ("gemma3:4b", "gemma3:4b"),
+        ("phi4-mini", "phi4-mini:latest"),
+        ("phi4-mini:latest", "phi4-mini:latest"),
+        ("missing", None),
+        ("gemma3:1b", None),
+    ],
+)
+def test_bare_model_names_resolve_to_their_latest_tag(name: str, expected: str | None) -> None:
+    available = {"gemma3:4b", "phi4-mini:latest", "qwen3.5:4b"}
+    assert resolve_model_tag(name, available) == expected

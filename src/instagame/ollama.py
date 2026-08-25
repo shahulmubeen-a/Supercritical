@@ -66,6 +66,33 @@ def normalise_host(host: str | None) -> str:
     return value.rstrip("/")
 
 
+def resolve_model_tag(name: str, available: set[str] | list[str]) -> str | None:
+    """Match a model name against the tags a server actually holds.
+
+    Ollama treats a bare name as its ``:latest`` tag, but reports the full tag
+    when listing. This maps one onto the other so ``phi4-mini`` finds
+    ``phi4-mini:latest``.
+
+    Parameters
+    ----------
+    name : str
+        Model name as the user wrote it.
+    available : set of str or list of str
+        Tags the server reports.
+
+    Returns
+    -------
+    str or None
+        The canonical tag, or None when the server does not have the model.
+    """
+    tags = set(available)
+    if name in tags:
+        return name
+    if ":" not in name and f"{name}:latest" in tags:
+        return f"{name}:latest"
+    return None
+
+
 class OllamaClient:
     """Thin wrapper over the Ollama generate API.
 
