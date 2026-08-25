@@ -15,7 +15,7 @@ from pathlib import Path
 from .board import BoardSnapshot
 from .game import Game, TurnResult
 
-REPLAY_VERSION = 1
+REPLAY_VERSION = 2
 EMPTY_OWNER = -1
 
 
@@ -60,7 +60,6 @@ class Recorder:
         result : TurnResult
             The turn to store.
         """
-        player = self.game.player_by_id(result.player_id)
         placement = result.placement
         self.turns.append(
             {
@@ -68,8 +67,6 @@ class Recorder:
                 "row": placement.row,
                 "col": placement.col,
                 "fallback": result.used_fallback,
-                "reason": getattr(player, "last_reason", "") or "",
-                "latency": round(float(getattr(player, "last_latency", 0.0) or 0.0), 3),
                 "initial": encode_grid(placement.initial),
                 "steps": [
                     {
@@ -113,18 +110,6 @@ class Recorder:
             ],
             "turns": self.turns,
             "winner": self.game.winner,
-            "stats": [
-                {
-                    "id": player.player_id,
-                    "name": player.name,
-                    "calls": player.calls,
-                    "average_latency": round(player.average_latency, 3),
-                    "illegal": player.illegal,
-                    "errors": player.errors,
-                }
-                for player in self.game.players
-                if hasattr(player, "average_latency")
-            ],
         }
 
     def write_json(self, path: Path) -> Path:

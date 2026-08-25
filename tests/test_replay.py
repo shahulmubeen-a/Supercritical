@@ -50,7 +50,16 @@ def test_recorded_turn_carries_placement_and_cascade(played_game) -> None:
     _, recorder = played_game
     turn = recorder.turns[0]
 
-    assert set(turn) >= {"player", "row", "col", "initial", "steps", "eliminated", "winner"}
+    assert set(turn) == {
+        "player",
+        "row",
+        "col",
+        "fallback",
+        "initial",
+        "steps",
+        "eliminated",
+        "winner",
+    }
     assert len(turn["initial"]) == 4 * 3
     for step in turn["steps"]:
         assert len(step["transit"]) == 4 * 3
@@ -68,22 +77,7 @@ def test_replay_dict_describes_the_whole_match(played_game) -> None:
     assert [p["id"] for p in data["players"]] == [0, 1]
     assert len(data["turns"]) == game.turn_number
     assert data["winner"] == game.winner
-    assert data["stats"] == []
-
-
-def test_stats_are_recorded_for_model_players() -> None:
-    from instagame.players.llm_player import OllamaPlayer
-
-    board = Board(3, 3)
-    model = OllamaPlayer(0, model="fake", client=None)
-    model.calls, model.total_latency, model.illegal = 4, 8.0, 1
-    game = Game(board, [model, build_player("random", 1, rng=random.Random(0))])
-    data = Recorder(game).to_dict()
-
-    assert len(data["stats"]) == 1
-    assert data["stats"][0]["name"] == "fake"
-    assert data["stats"][0]["average_latency"] == pytest.approx(2.0)
-    assert data["stats"][0]["illegal"] == 1
+    assert "stats" not in data
 
 
 def test_written_json_round_trips(played_game, tmp_path) -> None:
@@ -101,7 +95,7 @@ def test_page_embeds_the_replay_and_title(played_game) -> None:
     assert "__REPLAY_DATA__" not in page
     assert "__TITLE__" not in page
     assert "<title>My Match</title>" in page
-    assert '"version":1' in page
+    assert '"version":2' in page
 
 
 def test_page_escapes_a_title_that_looks_like_markup(played_game) -> None:

@@ -10,7 +10,7 @@ from instagame.board import Board
 from instagame.players import PLAYER_TYPES, build_player
 from instagame.players.greedy_player import GreedyPlayer
 
-OFFLINE_TYPES = sorted(set(PLAYER_TYPES) - {"ollama"})
+OFFLINE_TYPES = sorted(PLAYER_TYPES)
 
 
 def random_board(rng: random.Random, rows: int = 6, cols: int = 5) -> Board:
@@ -53,7 +53,14 @@ def test_bots_always_return_a_legal_move(kind: str, seed: int) -> None:
 
 def test_build_player_rejects_unknown_types() -> None:
     with pytest.raises(KeyError):
-        build_player("gpt", 0)
+        build_player("nonesuch", 0)
+
+
+def test_the_removed_model_backend_is_no_longer_registered() -> None:
+    """Guards the Ollama removal: the seat type and its module are both gone."""
+    assert "ollama" not in PLAYER_TYPES
+    with pytest.raises(ImportError):
+        import instagame.ollama  # noqa: F401
 
 
 def test_greedy_prefers_a_capture_over_an_empty_corner() -> None:

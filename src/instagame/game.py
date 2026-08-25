@@ -161,10 +161,10 @@ class Game:
     def ask_current_player(self) -> tuple[int, int, bool]:
         """Query the current player for a move without applying it.
 
-        Split out from :meth:`step` so a caller can run a slow player, such as
-        one backed by a language model, on a worker thread and keep its UI
-        responsive. This only reads the board, so it is safe off the main
-        thread as long as nothing else mutates the game meanwhile.
+        Split out from :meth:`step` so a caller can run a slow player on a
+        worker thread and keep its UI responsive. This only reads the board, so
+        it is safe off the main thread as long as nothing else mutates the game
+        meanwhile.
 
         Returns
         -------
