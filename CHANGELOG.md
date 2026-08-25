@@ -80,5 +80,5 @@ are in place, and the public surface is now covered by semantic versioning.
 - The side panel's status and statistics blocks could overlap the shortcut
   hints on a short window.
 
-[Unreleased]: https://github.com/shahulmubeen-a/Supercritical-AI/compare/v1.0.0...HEAD
-[1.0.0]: https://github.com/shahulmubeen-a/Supercritical-AI/releases/tag/v1.0.0
+[Unreleased]: https://github.com/shahulmubeen-a/Supercritical/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/shahulmubeen-a/Supercritical/releases/tag/v1.0.0

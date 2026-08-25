@@ -1,6 +1,6 @@
 # Supercritical
 
-[![CI](https://github.com/shahulmubeen-a/Supercritical-AI/actions/workflows/ci.yml/badge.svg)](https://github.com/shahulmubeen-a/Supercritical-AI/actions/workflows/ci.yml)
+[![CI](https://github.com/shahulmubeen-a/Supercritical/actions/workflows/ci.yml/badge.svg)](https://github.com/shahulmubeen-a/Supercritical/actions/workflows/ci.yml)
 ![Python](https://img.shields.io/badge/python-3.12-blue)
 ![Licence](https://img.shields.io/badge/licence-proprietary-lightgrey)
 ![Version](https://img.shields.io/badge/version-1.0.0-brightgreen)
