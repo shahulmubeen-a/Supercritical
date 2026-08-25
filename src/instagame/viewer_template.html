@@ -53,13 +53,6 @@
   input[type=range] { width: 100%; accent-color: #5c6f86; }
   .scrub { margin: 6px 0 2px; }
   .meta { color: var(--muted); font-size: 13px; min-height: 38px; margin-top: 8px; }
-  .why { color: var(--text); font-style: italic; }
-  h2 { font-size: 10px; text-transform: uppercase; letter-spacing: 0.13em; color: var(--muted);
-       margin: 20px 0 8px; font-weight: 650; }
-  table { width: 100%; border-collapse: collapse; font-size: 13px; }
-  td { padding: 4px 0; color: var(--muted); }
-  td:first-child { color: var(--text); }
-  td.num { text-align: right; font-family: var(--mono); font-variant-numeric: tabular-nums; font-size: 12px; }
   .winner { margin-top: 16px; font-weight: 650; font-size: 16px; }
   footer { margin-top: 28px; color: var(--muted); font-size: 13px; }
     kbd { background: var(--chip); border: 1px solid var(--hair); border-radius: 4px;
@@ -90,10 +83,6 @@
     <div class="panel">
       <div class="share" id="share"></div>
       <div id="seats"></div>
-      <div id="statsBlock" hidden>
-        <h2>Models</h2>
-        <table id="stats"></table>
-      </div>
       <div class="winner" id="winner"></div>
     </div>
   </div>
@@ -281,16 +270,6 @@ const speedBtn = document.getElementById("speed");
 document.getElementById("subtitle").textContent =
   `${COLS}×${ROWS} grid · ${REPLAY.players.length} players · ${REPLAY.turns.length} turns`;
 
-const statsBlock = document.getElementById("statsBlock");
-if (REPLAY.stats && REPLAY.stats.length) {
-  statsBlock.hidden = false;
-  document.getElementById("stats").innerHTML = REPLAY.stats.map(s => `
-    <tr><td style="color:${color(s.id)}">${escapeHtml(s.name)}</td>
-        <td class="num">${s.calls}</td>
-        <td class="num">${s.average_latency.toFixed(1)}s</td>
-        <td class="num">${s.illegal} il</td></tr>`).join("");
-}
-
 function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, ch =>
     ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[ch]);
@@ -337,11 +316,8 @@ function renderPanel(phase) {
     const who = REPLAY.players.find(p => p.id === turn.player);
     const bits = [`<strong style="color:${color(turn.player)}">${escapeHtml(who ? who.name : "?")}</strong>`,
                   `(${turn.row},${turn.col})`];
-    if (turn.latency) bits.push(`${turn.latency.toFixed(1)}s`);
     if (turn.fallback) bits.push("<em>fallback</em>");
-    let html = bits.join(" &middot; ");
-    if (turn.reason) html += `<br><span class="why">${escapeHtml(turn.reason)}</span>`;
-    metaEl.innerHTML = html;
+    metaEl.innerHTML = bits.join(" &middot; ");
   } else {
     metaEl.textContent = "";
   }

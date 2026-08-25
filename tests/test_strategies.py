@@ -226,7 +226,6 @@ def test_each_strategy_can_finish_a_match(kind: str) -> None:
 def test_offline_types_excludes_model_players() -> None:
     kinds = offline_types()
 
-    assert "ollama" not in kinds
     assert len(kinds) == len(STRATEGY_TYPES) + 2
     assert {"random", "greedy"} <= set(kinds)
 

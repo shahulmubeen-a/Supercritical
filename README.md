@@ -47,10 +47,6 @@ uv run instagame --headless --games 200 --seed 7
 | `--no-blur` | Disable motion blur trails |
 | `--no-debug` | Hide the takeover panel |
 | `--illegal-retries` | Illegal moves tolerated before a random legal one is substituted |
-| `--ollama-host` | Ollama base URL, defaults to `$OLLAMA_HOST` then localhost |
-| `--llm-timeout` | Seconds to wait for a model move |
-| `--llm-temperature` | Sampling temperature |
-| `--llm-explain` | Ask models for a one line reason, shown in the panel |
 | `--record` | Write a replay: `.html` for a deployable page, `.json` for raw data |
 | `--title` | Title shown on the replay page |
 
@@ -173,74 +169,14 @@ here is a conclusion about a board size.
 The 20x10 figures come from 120 games, roughly 20 to 40 per strategy, so treat
 them as directional. The 6x5 tables are far firmer.
 
-## Model players
-
-Seats can be driven by local models through [Ollama](https://ollama.com). No API
-key and no extra Python dependency: the client is built on the standard library.
-
-```bash
-ollama serve
-ollama pull gemma3:4b
-```
-
-Then name a model on any seat. The seat spec splits on its first colon only, so
-model tags keep theirs:
-
-```bash
-uv run instagame --rows 6 --cols 5 --llm-explain \
-  --players ollama:gemma3:4b,ollama:qwen3.5:4b,ollama:llama3.2:3b,ollama:phi4-mini
-```
-
-Missing models and an unreachable server are caught before the match starts.
-
-### Making it bearable
-
-Model moves run on a worker thread, so the window keeps animating and the panel
-shows who is thinking and for how long. Measured on a 31GB CPU-only box with a
-small board, warm:
-
-| Tier | Latency per move | Four models resident |
-| --- | --- | --- |
-| ~1B | ~2s | ~4GB |
-| ~4B | ~7s | ~12GB |
-| ~9B | ~14s | ~24GB, will not fit |
-
-Two things matter far more than model choice:
-
-- **Keep the board small.** A 6x5 board finishes in tens of turns. Turn count
-  grows with area, so 20x10 at seven seconds a move is an afternoon.
-- **Keep every model resident.** Ollama unloads models to stay under its limit,
-  and a reload costs more than the move itself. Raise the cap before starting:
-
-  ```bash
-  OLLAMA_MAX_LOADED_MODELS=4 OLLAMA_KEEP_ALIVE=30m ollama serve
-  ```
-
-### How a model is asked
-
-Each turn it gets a fixed system prompt with the rules, then a board table where
-every cell reads `owner count/capacity`, so capacities never have to be inferred.
-The legal move list is enumerated outright, and Ollama's structured output holds
-the reply to a JSON schema.
-
-Responses are still messy in practice. Models truncate mid-explanation and leave
-the JSON unterminated, so the parser falls back to scanning for the coordinate
-fields rather than throwing the turn away. Genuinely illegal moves are retried,
-then replaced with a random legal move, and both are counted per model:
-
-```
-gemma3:4b: 48 calls, 5.2s avg, 1 illegal, 0 errors
-```
-
 ## Replays
 
-Any match can be recorded and played back later. Because model matches are slow
-and only run where Ollama lives, this is how you share one:
+Any match can be recorded and played back later:
 
 ```bash
 uv run instagame --headless --rows 6 --cols 5 --record replays/match.html \
-  --title "gemma3 vs qwen3.5" \
-  --players ollama:gemma3:4b,ollama:qwen3.5:4b,greedy,random
+  --title "loader vs sentinel" \
+  --players loader,sentinel,greedy,random
 ```
 
 That writes a single self-contained HTML file with the replay embedded: no
@@ -248,9 +184,9 @@ server, no dependencies, no network requests. Open it from disk, drop it on
 GitHub Pages, or publish it anywhere static. A 50-turn 6x5 match is about 64KB.
 
 The page replays the match with the same animations as the live renderer, plus
-a scrubbable timeline, per-turn stepping, speed control, and each model's stated
-reason for its move. `--record match.json` writes the raw data instead if you
-want to analyse matches rather than watch them.
+a scrubbable timeline, per-turn stepping and speed control. `--record
+match.json` writes the raw data instead if you want to analyse matches rather
+than watch them.
 
 Recording works for visual matches too, so you can watch live and keep the
 replay.
@@ -282,9 +218,16 @@ class MyPlayer(Player):
 ```
 
 Register it in `PLAYER_TYPES` in `src/instagame/players/__init__.py` to make it
-selectable from `--players`. `OllamaPlayer` is the worked example: the engine
-validates whatever a player returns and never trusts it, so a slow or unreliable
-one degrades the quality of play rather than corrupting the game.
+selectable from `--players`, and set `tier` so it is ranked against players that
+search as far as it does. The engine validates whatever a player returns and
+never trusts it: an illegal move is retried, then replaced with a random legal
+one, so a buggy player degrades the quality of play rather than corrupting the
+game.
+
+For a strategy that scores candidate moves, subclass `ScoringPlayer` and
+implement `score`; to judge moves by playing them out, subclass
+`SimulatingPlayer` and implement `rate`. See
+`src/instagame/players/strategies.py`.
 
 ## Development
 
