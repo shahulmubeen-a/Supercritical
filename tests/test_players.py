@@ -10,6 +10,8 @@ from instagame.board import Board
 from instagame.players import PLAYER_TYPES, build_player
 from instagame.players.greedy_player import GreedyPlayer
 
+OFFLINE_TYPES = sorted(set(PLAYER_TYPES) - {"ollama"})
+
 
 def random_board(rng: random.Random, rows: int = 6, cols: int = 5) -> Board:
     """Build a settled board with orbs scattered across three owners.
@@ -38,7 +40,7 @@ def random_board(rng: random.Random, rows: int = 6, cols: int = 5) -> Board:
     return board
 
 
-@pytest.mark.parametrize("kind", sorted(PLAYER_TYPES))
+@pytest.mark.parametrize("kind", OFFLINE_TYPES)
 @pytest.mark.parametrize("seed", range(15))
 def test_bots_always_return_a_legal_move(kind: str, seed: int) -> None:
     rng = random.Random(seed)

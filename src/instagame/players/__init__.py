@@ -2,11 +2,19 @@
 
 from .base import Player
 from .greedy_player import GreedyPlayer
+from .llm_player import OllamaPlayer
 from .random_player import RandomPlayer
 
-__all__ = ["PLAYER_TYPES", "GreedyPlayer", "Player", "RandomPlayer", "build_player"]
+__all__ = [
+    "PLAYER_TYPES",
+    "GreedyPlayer",
+    "OllamaPlayer",
+    "Player",
+    "RandomPlayer",
+    "build_player",
+]
 
-PLAYER_TYPES = {"random": RandomPlayer, "greedy": GreedyPlayer}
+PLAYER_TYPES = {"random": RandomPlayer, "greedy": GreedyPlayer, "ollama": OllamaPlayer}
 
 
 def build_player(kind: str, player_id: int, name: str | None = None, **kwargs) -> Player:
@@ -19,7 +27,8 @@ def build_player(kind: str, player_id: int, name: str | None = None, **kwargs) -
     player_id : int
         Seat id assigned to the player.
     name : str or None, optional
-        Display name, by default ``"<kind>-<player_id>"``.
+        Display name. Defaults to the model tag for model backed players and
+        ``"<kind>-<player_id>"`` otherwise.
     **kwargs
         Forwarded to the player constructor.
 
@@ -35,4 +44,6 @@ def build_player(kind: str, player_id: int, name: str | None = None, **kwargs) -
     """
     if kind not in PLAYER_TYPES:
         raise KeyError(f"unknown player type {kind!r}; known: {sorted(PLAYER_TYPES)}")
-    return PLAYER_TYPES[kind](player_id=player_id, name=name or f"{kind}-{player_id}", **kwargs)
+    if name is None:
+        name = kwargs.get("model") or f"{kind}-{player_id}"
+    return PLAYER_TYPES[kind](player_id=player_id, name=name, **kwargs)
