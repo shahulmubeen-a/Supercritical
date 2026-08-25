@@ -51,6 +51,8 @@ uv run instagame --headless --games 200 --seed 7
 | `--llm-timeout` | Seconds to wait for a model move |
 | `--llm-temperature` | Sampling temperature |
 | `--llm-explain` | Ask models for a one line reason, shown in the panel |
+| `--record` | Write a replay: `.html` for a deployable page, `.json` for raw data |
+| `--title` | Title shown on the replay page |
 
 ### Controls
 
@@ -123,6 +125,41 @@ then replaced with a random legal move, and both are counted per model:
 ```
 gemma3:4b: 48 calls, 5.2s avg, 1 illegal, 0 errors
 ```
+
+## Replays
+
+Any match can be recorded and played back later. Because model matches are slow
+and only run where Ollama lives, this is how you share one:
+
+```bash
+uv run instagame --headless --rows 6 --cols 5 --record replays/match.html \
+  --title "gemma3 vs qwen3.5" \
+  --players ollama:gemma3:4b,ollama:qwen3.5:4b,greedy,random
+```
+
+That writes a single self-contained HTML file with the replay embedded: no
+server, no dependencies, no network requests. Open it from disk, drop it on
+GitHub Pages, or publish it anywhere static. A 50-turn 6x5 match is about 64KB.
+
+The page replays the match with the same animations as the live renderer, plus
+a scrubbable timeline, per-turn stepping, speed control, and each model's stated
+reason for its move. `--record match.json` writes the raw data instead if you
+want to analyse matches rather than watch them.
+
+Recording works for visual matches too, so you can watch live and keep the
+replay.
+
+A replay stores the board snapshots the engine produced, not just the moves. The
+viewer therefore never reimplements the rules and cannot drift from the engine.
+
+To preview locally:
+
+```bash
+python3 -m http.server 8777
+```
+
+Then open `http://localhost:8777/replays/match.html`. Opening the file directly
+with a `file://` URL works too.
 
 ## Adding a player
 

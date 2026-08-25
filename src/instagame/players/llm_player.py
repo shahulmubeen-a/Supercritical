@@ -247,6 +247,7 @@ class OllamaPlayer(Player):
         self.illegal = 0
         self.errors = 0
         self.total_latency = 0.0
+        self.last_latency = 0.0
         self.last_reason = ""
 
     @property
@@ -307,6 +308,7 @@ class OllamaPlayer(Player):
             self.errors += 1
             raise
         self.calls += 1
+        self.last_latency = completion.latency
         self.total_latency += completion.latency
         row, col, reason = parse_move(completion.text)
         self.last_reason = reason
