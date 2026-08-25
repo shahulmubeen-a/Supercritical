@@ -229,3 +229,78 @@ def test_offline_types_excludes_model_players() -> None:
     assert "ollama" not in kinds
     assert len(kinds) == len(STRATEGY_TYPES) + 2
     assert {"random", "greedy"} <= set(kinds)
+
+
+def test_loader_fires_when_the_blast_is_worth_taking() -> None:
+    board = Board(6, 5)
+    board.cells[0][0].count = 1
+    board.cells[0][0].owner = 0
+    board.cells[0][1].count = 2
+    board.cells[0][1].owner = 1
+    row, col = build_player("loader", 0, rng=random.Random(0)).choose_move(board)
+
+    assert (row, col) == (0, 0)
+
+
+def test_loader_fires_rather_than_lose_a_primed_cell() -> None:
+    board = Board(6, 5)
+    board.cells[2][2].count = 3
+    board.cells[2][2].owner = 0
+    board.cells[2][3].count = 3
+    board.cells[2][3].owner = 1
+    bot = build_player("loader", 0, rng=random.Random(0))
+
+    assert threat_level(board, 2, 2, 0) == 1
+    assert bot.choose_move(board) == (2, 2)
+
+
+def test_loader_will_not_waste_a_primed_cell_on_nothing() -> None:
+    board = Board(6, 5)
+    board.cells[0][0].count = 1
+    board.cells[0][0].owner = 0
+    row, col = build_player("loader", 0, rng=random.Random(0)).choose_move(board)
+
+    assert (row, col) != (0, 0)
+    assert not would_explode(board, row, col)
+
+
+def test_loader_arms_cells_that_point_at_the_enemy() -> None:
+    """Between two interior cells, prefer the one whose blast would land."""
+    board = Board(7, 6)
+    board.cells[3][3].count = 2
+    board.cells[3][3].owner = 1
+    bot = build_player("loader", 0, rng=random.Random(0))
+    aimed = bot.score(board, 3, 2)
+    idle = bot.score(board, 1, 1)
+
+    assert board.critical_mass(3, 2) == board.critical_mass(1, 1)
+    assert aimed > idle
+
+
+def test_every_player_declares_a_search_tier() -> None:
+    from instagame.players import PLAYER_TYPES, offline_types, types_in_tier
+
+    positional = types_in_tier("positional")
+    simulating = types_in_tier("simulating")
+
+    assert set(positional) | set(simulating) == set(offline_types())
+    assert not set(positional) & set(simulating)
+    assert len(simulating) == 6
+    assert PLAYER_TYPES["random"].tier == "positional"
+    assert PLAYER_TYPES["retaliator"].tier == "simulating"
+
+
+def test_positional_strategies_never_simulate(monkeypatch) -> None:
+    """A positional player must not reach for the simulation helper."""
+    import instagame.players.strategies as strategies
+    from instagame.players import types_in_tier
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("positional strategy called simulate()")
+
+    monkeypatch.setattr(strategies, "simulate", forbidden)
+    board = busy_board(5)
+    for kind in types_in_tier("positional"):
+        bot = build_player(kind, 0, rng=random.Random(0))
+        row, col = bot.choose_move(board)
+        assert board.is_legal(row, col, 0), kind

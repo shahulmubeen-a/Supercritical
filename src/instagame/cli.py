@@ -13,7 +13,7 @@ from .board import Board
 from .game import Game
 from .logging_config import configure_logging, get_logger
 from .ollama import OllamaClient, OllamaError, resolve_model_tag
-from .players import PLAYER_TYPES, build_player, offline_types
+from .players import PLAYER_TYPES, build_player, offline_types, types_in_tier
 
 DEFAULT_ROWS = 9
 DEFAULT_COLS = 6
@@ -342,10 +342,13 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if args.list_players:
         logger = configure_logging(logging.INFO)
-        for kind in offline_types():
-            doc = (PLAYER_TYPES[kind].__doc__ or "").strip().splitlines()[0]
-            logger.info("%-12s %s", kind, doc)
-        logger.info("%-12s %s", "ollama", "Plays via a local model served by Ollama.")
+        for tier in ("positional", "simulating"):
+            logger.info("[%s]", tier)
+            for kind in types_in_tier(tier):
+                doc = (PLAYER_TYPES[kind].__doc__ or "").strip().splitlines()[0]
+                logger.info("  %-12s %s", kind, doc)
+        logger.info("[model]")
+        logger.info("  %-12s %s", "ollama", "Plays via a local model served by Ollama.")
         return 0
     seats = [parse_seat(spec) for spec in args.players.split(",") if spec.strip()]
     if len(seats) < 2:

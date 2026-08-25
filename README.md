@@ -86,7 +86,7 @@ uv run instagame --players sentinel,retaliator,corner,loader
 | `center` | Build in the interior, where cells hold the most |
 | `aggressor` | Detonate into the biggest reachable enemy stack |
 | `cautious` | Never sit next to an enemy cell one orb from critical |
-| `loader` | Stockpile: fill cells to one short of critical |
+| `loader` | Prime cells to one short of critical, then fire when the blast pays or the cell is about to be taken |
 | `detonator` | Set something off every turn it can |
 | `frontier` | Grow as one connected mass |
 | `parity` | Occupy one colour of the checkerboard, interlocking rather than solid |
@@ -104,28 +104,72 @@ uv run instagame --players sentinel,retaliator,corner,loader
 | `sentinel` | Most armed cells: stored potential to fire next turn |
 | `retaliator` | One move deeper, minimising the best reply against it |
 
-### Results
+### Divisions
 
-800 four-player games on a 6x5 board, seats drawn at random. Baseline is 25%.
+Strategies are ranked within their own division, because they do not search the
+same amount and it is not a fair table otherwise:
+
+- **Positional** players read the candidate cell and its neighbours. Zero ply.
+- **Simulating** players play each candidate out on a copy of the board.
+  `retaliator` goes a ply further and models the strongest reply.
+
+The game is deterministic and fully observable, so simulating your own move is
+arithmetic a human does in their head rather than hidden information. Still,
+comparing zero-ply against two-ply in one table measures search budget as much
+as strategy. `uv run instagame --list-players` prints the divisions.
+
+### Positional division
+
+700 four-player games, 6x5, seats drawn at random. Baseline 25%.
 
 | Strategy | Win rate | | Strategy | Win rate |
 | --- | --- | --- | --- | --- |
-| `sentinel` | **59.9%** | | `detonator` | 17.1% |
-| `retaliator` | 49.4% | | `parity` | 17.0% |
-| `greedy` | 43.7% | | `corner` | 10.9% |
-| `chain` | 42.8% | | `random` | 10.7% |
-| `harvester` | 41.3% | | `mirror` | 8.2% |
-| `spoiler` | 38.4% | | `cautious` | 8.1% |
-| `aggressor` | 30.8% | | `frontier` | 6.0% |
-| `territorial` | 30.0% | | `loader` | 1.7% |
-| `center` | 19.7% | | | |
-| `hunter` | 19.3% | | | |
+| `loader` | **78.5%** | | `parity` | 17.5% |
+| `greedy` | 50.2% | | `corner` | 16.9% |
+| `aggressor` | 33.8% | | `cautious` | 9.9% |
+| `detonator` | 30.8% | | `mirror` | 9.1% |
+| `center` | 26.7% | | `random` | 8.9% |
+| `hunter` | 19.8% | | `frontier` | 3.8% |
 
-Reproduce with any four names on `--players`, or read the tournament as a
-statement about the game: stored potential beats spent potential. `sentinel`
-wins by keeping the board armed and letting opponents commit first, while
-`loader`, which also stockpiles but never fires, comes last. Holding the threat
-is worth more than either hoarding or discharging it.
+### Simulating division
+
+400 four-player games, 6x5.
+
+| Strategy | Win rate |
+| --- | --- |
+| `sentinel` | **44.1%** |
+| `retaliator` | 28.0% |
+| `spoiler` | 24.5% |
+| `harvester` | 21.9% |
+| `territorial` | 16.1% |
+| `chain` | 15.1% |
+
+### Does searching further actually win?
+
+Not obviously. Best of each division, 200 games with seats rotated every game so
+turn order cannot flatter anyone:
+
+| Strategy | Division | Win rate |
+| --- | --- | --- |
+| `sentinel` | simulating | 39.0% |
+| `loader` | positional | 36.0% |
+| `greedy` | positional | 14.5% |
+| `retaliator` | simulating | 10.5% |
+
+A zero-ply player is level with the best simulator, and a second zero-ply player
+beats the two-ply one. Picking the right thing to measure matters more here than
+looking further ahead.
+
+### Board size changes the answer
+
+Ranked across all strategies together, `chain` goes from 42.8% on 6x5 to 68.2%
+on 20x10 while `sentinel` falls from 59.9% to 39.1%. Small boards saturate fast,
+so holding threat everywhere decides them; on 200 cells with games running
+around 390 turns, cascade reach and accumulation pay instead. Any conclusion
+here is a conclusion about a board size.
+
+The 20x10 figures come from 120 games, roughly 20 to 40 per strategy, so treat
+them as directional. The 6x5 tables are far firmer.
 
 ## Model players
 

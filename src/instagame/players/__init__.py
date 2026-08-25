@@ -17,6 +17,7 @@ __all__ = [
     "SimulatingPlayer",
     "build_player",
     "offline_types",
+    "types_in_tier",
 ]
 
 PLAYER_TYPES: dict[str, type[Player]] = {
@@ -25,6 +26,22 @@ PLAYER_TYPES: dict[str, type[Player]] = {
     "ollama": OllamaPlayer,
     **STRATEGY_TYPES,
 }
+
+
+def types_in_tier(tier: str) -> list[str]:
+    """Return every offline player type searching to a given depth.
+
+    Parameters
+    ----------
+    tier : str
+        Either ``"positional"`` or ``"simulating"``.
+
+    Returns
+    -------
+    list of str
+        Sorted type names in that tier.
+    """
+    return sorted(k for k in offline_types() if PLAYER_TYPES[k].tier == tier)
 
 
 def offline_types() -> list[str]:

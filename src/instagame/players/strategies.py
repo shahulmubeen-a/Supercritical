@@ -22,9 +22,17 @@ from .tactics import (
     would_explode,
 )
 
+TIER_POSITIONAL = "positional"
+TIER_SIMULATING = "simulating"
+
 
 class ScoringPlayer(Player):
     """Picks the highest scoring legal move, breaking ties at random.
+
+    Subclasses declare a ``tier``: positional players read only the candidate
+    cell and its neighbours, simulating players play candidates out on a copy
+    of the board. The two search different amounts, so they are ranked in
+    separate divisions rather than against each other.
 
     Parameters
     ----------
@@ -37,6 +45,7 @@ class ScoringPlayer(Player):
     """
 
     key = "scoring"
+    tier = TIER_POSITIONAL
 
     def __init__(
         self, player_id: int, name: str | None = None, rng: random.Random | None = None
@@ -96,6 +105,7 @@ class SimulatingPlayer(ScoringPlayer):
     """Scores moves by playing them out on a copy of the board."""
 
     key = "simulating"
+    tier = TIER_SIMULATING
 
     @abstractmethod
     def rate(self, board: Board, outcome: Outcome, row: int, col: int) -> float:
@@ -179,16 +189,40 @@ class Cautious(ScoringPlayer):
 
 
 class Loader(ScoringPlayer):
-    """Stockpiles orbs, filling cells to one short of critical."""
+    """Primes cells to one below critical, then fires when it pays.
+
+    Arms cells that point at opponent orbs, and only pulls the trigger for one
+    of two reasons: the blast is worth something, or an adjacent opponent is
+    about to detonate into the primed cell anyway, in which case spending it
+    first is strictly better than losing it.
+
+    Everything it reads is the candidate cell and its immediate neighbours, so
+    it stays a positional player.
+    """
 
     key = "loader"
+    FIRE_MIN_PAYOFF = 2
+    ARMED_BONUS = 6.0
+    AIM_WEIGHT = 0.8
+    THREAT_WEIGHT = 5.0
 
     def score(self, board: Board, row: int, col: int) -> float:
         mass = board.critical_mass(row, col)
         resulting = board.cells[row][col].count + 1
+        payoff = enemy_orbs_adjacent(board, row, col, self.player_id)
+        threat = threat_level(board, row, col, self.player_id)
+
         if resulting >= mass:
-            return -5.0
-        return resulting / mass
+            if threat:
+                # Use it or lose it: the neighbour fires next turn regardless.
+                return 100.0 + 5.0 * payoff
+            if payoff >= self.FIRE_MIN_PAYOFF:
+                return 50.0 + 5.0 * payoff
+            return -20.0
+
+        progress = 4.0 * (resulting / mass)
+        armed = self.ARMED_BONUS if resulting == mass - 1 else 0.0
+        return progress + armed + self.AIM_WEIGHT * payoff - self.THREAT_WEIGHT * threat
 
 
 class Detonator(ScoringPlayer):
