@@ -1,0 +1,438 @@
+<title>__TITLE__</title>
+<style>
+  :root {
+    /* A deliberately single-theme page: this is an instrument reading out a
+       reactor, and it holds that look on any host ground. Every colour is
+       painted explicitly so nothing is inherited from the viewer's theme. */
+    --bg: #0b0d10;
+    --panel: #13161b;
+    --hair: #232830;
+    --text: #dfe4ea;
+    --muted: #78818e;
+    --chip: #1d222a;
+    --chip-hi: #2b323d;
+    --mono: ui-monospace, "JetBrains Mono", SFMono-Regular, Menlo, Consolas, monospace;
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 15px/1.55 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  .num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+  .wrap { max-width: 1100px; margin: 0 auto; padding: 24px 20px 48px; }
+  header { margin-bottom: 20px; }
+  h1 { margin: 0 0 5px; font-size: 27px; font-weight: 640; letter-spacing: -0.015em; text-wrap: balance; }
+  .sub { color: var(--muted); font-size: 13px; font-family: var(--mono); letter-spacing: 0.01em; }
+  .stage { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 20px; align-items: start; }
+  @media (max-width: 820px) { .stage { grid-template-columns: minmax(0, 1fr); } }
+  canvas { width: 100%; height: auto; display: block; border-radius: 10px;
+           background: var(--bg); border: 1px solid var(--hair); }
+    .panel { background: var(--panel); border: 1px solid var(--hair); border-radius: 12px; padding: 16px; }
+  .share { display: flex; height: 5px; border-radius: 3px; overflow: hidden; gap: 1px;
+           margin: 0 0 14px; background: var(--chip); }
+  .share span { transition: flex-grow 0.18s linear; min-width: 0; }
+  .row { display: flex; align-items: center; gap: 10px; padding: 7px 8px; border-radius: 8px; }
+  .row.turn { outline: 1px solid currentColor; }
+  .row.out { opacity: 0.42; }
+  .dot { width: 13px; height: 13px; border-radius: 50%; flex: 0 0 auto; }
+  .nm { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
+    .sc { font-family: var(--mono); font-variant-numeric: tabular-nums;
+        color: var(--text); font-weight: 600; font-size: 14px; }
+  .sc.gone { color: var(--muted); font-size: 11px; letter-spacing: 0.09em; }
+  .controls { display: flex; gap: 8px; margin: 14px 0 10px; flex-wrap: wrap; }
+  button {
+    font: inherit; font-size: 14px; color: var(--text); background: var(--chip);
+    border: 0; border-radius: 7px; padding: 7px 13px; cursor: pointer;
+  }
+  button:hover { background: var(--chip-hi); }
+  button:focus-visible { outline: 2px solid #6f6fa0; outline-offset: 2px; }
+  input[type=range] { width: 100%; accent-color: #5c6f86; }
+  .scrub { margin: 6px 0 2px; }
+  .meta { color: var(--muted); font-size: 13px; min-height: 38px; margin-top: 8px; }
+  .why { color: var(--text); font-style: italic; }
+  h2 { font-size: 10px; text-transform: uppercase; letter-spacing: 0.13em; color: var(--muted);
+       margin: 20px 0 8px; font-weight: 650; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  td { padding: 4px 0; color: var(--muted); }
+  td:first-child { color: var(--text); }
+  td.num { text-align: right; font-family: var(--mono); font-variant-numeric: tabular-nums; font-size: 12px; }
+  .winner { margin-top: 16px; font-weight: 650; font-size: 16px; }
+  footer { margin-top: 28px; color: var(--muted); font-size: 13px; }
+    kbd { background: var(--chip); border: 1px solid var(--hair); border-radius: 4px;
+        padding: 1px 6px; font: 12px var(--mono); }
+  @media (prefers-reduced-motion: reduce) { .share span { transition: none; } }
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>__TITLE__</h1>
+    <div class="sub" id="subtitle"></div>
+  </header>
+
+  <div class="stage">
+    <div>
+      <canvas id="board"></canvas>
+      <div class="scrub"><input type="range" id="scrub" min="0" max="1000" value="0" step="1" aria-label="Timeline"></div>
+      <div class="controls">
+        <button id="play">Pause</button>
+        <button id="back">&larr; Turn</button>
+        <button id="fwd">Turn &rarr;</button>
+        <button id="speed">1&times;</button>
+        <button id="restart">Restart</button>
+      </div>
+      <div class="meta" id="meta"></div>
+    </div>
+
+    <div class="panel">
+      <div class="share" id="share"></div>
+      <div id="seats"></div>
+      <div id="statsBlock" hidden>
+        <h2>Models</h2>
+        <table id="stats"></table>
+      </div>
+      <div class="winner" id="winner"></div>
+    </div>
+  </div>
+
+  <footer>
+    <kbd>space</kbd> play/pause &nbsp; <kbd>&larr;</kbd> <kbd>&rarr;</kbd> step a turn
+  </footer>
+</div>
+
+<script>
+const REPLAY = __REPLAY_DATA__;
+
+const COLORS = ["#e84855", "#3a9af0", "#3ad084", "#f4c23e", "#b070f0", "#fa8c3c"];
+const BG = "#0b0d10", GRIDLINE = "#232830";
+const REDUCED = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+const color = id => COLORS[((id % COLORS.length) + COLORS.length) % COLORS.length];
+
+const PLACE_DUR = 0.14, STEP_DUR = 0.26, GAP_DUR = 0.22;
+const TRAIL = 7, TRAIL_SPACING = 0.055;
+const ROWS = REPLAY.board.rows, COLS = REPLAY.board.cols;
+
+const easeInOutCubic = t => (t = Math.min(1, Math.max(0, t)), t < 0.5 ? 4*t*t*t : 1 - Math.pow(-2*t+2, 3)/2);
+const easeOutBack = t => { t = Math.min(1, Math.max(0, t)); const c = 2.9; return 1 + c*Math.pow(t-1,3) + 1.9*Math.pow(t-1,2); };
+
+function criticalMass(r, c) {
+  let m = 4;
+  if (r === 0 || r === ROWS - 1) m--;
+  if (c === 0 || c === COLS - 1) m--;
+  return m;
+}
+
+// Flatten the replay into a timeline of phases, mirroring the engine's own
+// place-then-cascade structure so playback matches a live match exactly.
+const phases = [];
+let priorGrid = Array.from({ length: ROWS * COLS }, () => [0, -1]);
+REPLAY.turns.forEach((turn, ti) => {
+  phases.push({ ti, kind: "place", dur: PLACE_DUR, grid: turn.initial,
+                focus: [turn.row, turn.col], player: turn.player, flights: [], sources: [] });
+  turn.steps.forEach(step => {
+    const flights = [];
+    step.explosions.forEach(e => e.t.forEach(t => flights.push({ src: [e.r, e.c], dst: t, p: e.p })));
+    phases.push({ ti, kind: "cascade", dur: STEP_DUR, grid: step.transit, flights,
+                  sources: step.explosions.map(e => [e.r, e.c]), player: turn.player, focus: null });
+  });
+  const settled = turn.steps.length ? turn.steps[turn.steps.length - 1].after : turn.initial;
+  phases.push({ ti, kind: "hold", dur: GAP_DUR, grid: settled, flights: [], sources: [],
+                player: turn.player, focus: null });
+  priorGrid = settled;
+});
+if (!phases.length) {
+  phases.push({ ti: -1, kind: "hold", dur: 1, grid: priorGrid, flights: [], sources: [], player: null, focus: null });
+}
+
+const starts = [];
+let total = 0;
+for (const p of phases) { starts.push(total); total += p.dur; }
+
+const canvas = document.getElementById("board");
+const ctx = canvas.getContext("2d");
+let cell = 48, originX = 0, originY = 0;
+
+function layout() {
+  // A hidden or not-yet-laid-out container reports zero width; fall back to a
+  // sensible size so the first paint is never a sliver.
+  const available = canvas.parentElement.clientWidth || 640;
+  cell = Math.max(20, Math.min(78, Math.floor(available / COLS)));
+  const w = cell * COLS, h = cell * ROWS;
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = Math.round(w * dpr);
+  canvas.height = Math.round(h * dpr);
+  canvas.style.width = w + "px";
+  canvas.style.height = h + "px";
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  originX = 0; originY = 0;
+}
+
+const centre = (r, c) => [originX + (c + 0.5) * cell, originY + (r + 0.5) * cell];
+
+function orbOffsets(count, spread, phase) {
+  if (count <= 0) return [];
+  if (count === 1) return [[0, 0]];
+  const step = (Math.PI * 2) / count;
+  return Array.from({ length: count }, (_, i) =>
+    [spread * Math.cos(phase + i * step), spread * Math.sin(phase + i * step)]);
+}
+
+function drawOrb(x, y, fill, radius, alpha) {
+  ctx.globalAlpha = alpha;
+  const halo = ctx.createRadialGradient(x, y, radius * 0.8, x, y, radius * 1.9);
+  halo.addColorStop(0, fill);
+  halo.addColorStop(1, "rgba(0,0,0,0)");
+  ctx.globalAlpha = alpha * 0.32;
+  ctx.fillStyle = halo;
+  ctx.beginPath();
+  ctx.arc(x, y, radius * 1.9, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.globalAlpha = alpha;
+  const body = ctx.createRadialGradient(
+    x - radius / 3, y - radius / 3, radius * 0.1, x, y, radius);
+  body.addColorStop(0, "#ffffff");
+  body.addColorStop(0.45, fill);
+  body.addColorStop(1, fill);
+  ctx.fillStyle = body;
+  ctx.beginPath();
+  ctx.arc(x, y, radius, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.globalAlpha = 1;
+}
+
+function draw(phase, t, clock) {
+  // Paint the background rather than leaning on the CSS behind the canvas, so
+  // an exported or saved frame carries the same colours as the page.
+  ctx.fillStyle = BG;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  const spread = cell * 0.2, radius = cell * 0.155, spin = REDUCED ? 0 : clock * 0.9;
+
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      const [count, owner] = phase.grid[r * COLS + c];
+      const x = originX + c * cell, y = originY + r * cell;
+      if (owner >= 0 && count > 0) {
+        ctx.globalAlpha = 0.11; ctx.fillStyle = color(owner);
+        ctx.fillRect(x, y, cell, cell); ctx.globalAlpha = 1;
+      }
+      ctx.strokeStyle = GRIDLINE; ctx.lineWidth = 1;
+      ctx.strokeRect(x + 0.5, y + 0.5, cell - 1, cell - 1);
+
+      if (!count || owner < 0) continue;
+      if (count === criticalMass(r, c) - 1) {
+        const wave = REDUCED ? 0.5 : 0.5 + 0.5 * Math.sin(clock * 4);
+        ctx.globalAlpha = 0.12 + 0.2 * wave;
+        ctx.strokeStyle = color(owner); ctx.lineWidth = Math.max(1, cell / 22);
+        ctx.beginPath();
+        ctx.arc(x + cell/2, y + cell/2, cell * (0.34 + 0.05 * wave), 0, Math.PI * 2);
+        ctx.stroke(); ctx.globalAlpha = 1;
+      }
+      const pop = (phase.focus && phase.focus[0] === r && phase.focus[1] === c)
+        ? 0.4 + 0.6 * easeOutBack(t) : 1;
+      const [cx, cy] = centre(r, c);
+      for (const [dx, dy] of orbOffsets(count, spread, spin)) {
+        drawOrb(cx + dx, cy + dy, color(owner), radius * pop, 1);
+      }
+    }
+  }
+
+  if (phase.kind === "cascade") {
+    const ringAlpha = 0.55 * (1 - t);
+    if (ringAlpha > 0) {
+      ctx.strokeStyle = color(phase.player);
+      ctx.lineWidth = Math.max(1, cell / 20);
+      ctx.globalAlpha = ringAlpha;
+      const rad = cell * (0.15 + 0.8 * easeInOutCubic(t));
+      for (const [r, c] of phase.sources) {
+        const [cx, cy] = centre(r, c);
+        ctx.beginPath(); ctx.arc(cx, cy, rad, 0, Math.PI * 2); ctx.stroke();
+      }
+      ctx.globalAlpha = 1;
+    }
+    for (const f of phase.flights) {
+      const fill = color(f.p);
+      const [sx, sy] = centre(f.src[0], f.src[1]);
+      const [dx, dy] = centre(f.dst[0], f.dst[1]);
+      for (let g = TRAIL; g >= 1; g--) {
+        const gt = t - g * TRAIL_SPACING;
+        if (gt <= 0) continue;
+        const fade = 1 - g / (TRAIL + 1);
+        const e = easeInOutCubic(gt);
+        drawOrb(sx + (dx - sx) * e, sy + (dy - sy) * e, fill,
+                radius * (0.45 + 0.5 * fade), 0.6 * Math.pow(fade, 1.6));
+      }
+      const e = easeInOutCubic(t);
+      drawOrb(sx + (dx - sx) * e, sy + (dy - sy) * e, fill, radius, 1);
+    }
+  }
+}
+
+const seatsEl = document.getElementById("seats");
+const metaEl = document.getElementById("meta");
+const winnerEl = document.getElementById("winner");
+const shareEl = document.getElementById("share");
+const scrubEl = document.getElementById("scrub");
+const playBtn = document.getElementById("play");
+const speedBtn = document.getElementById("speed");
+
+document.getElementById("subtitle").textContent =
+  `${COLS}×${ROWS} grid · ${REPLAY.players.length} players · ${REPLAY.turns.length} turns`;
+
+const statsBlock = document.getElementById("statsBlock");
+if (REPLAY.stats && REPLAY.stats.length) {
+  statsBlock.hidden = false;
+  document.getElementById("stats").innerHTML = REPLAY.stats.map(s => `
+    <tr><td style="color:${color(s.id)}">${escapeHtml(s.name)}</td>
+        <td class="num">${s.calls}</td>
+        <td class="num">${s.average_latency.toFixed(1)}s</td>
+        <td class="num">${s.illegal} il</td></tr>`).join("");
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, ch =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[ch]);
+}
+
+function seatState(phase) {
+  const counts = new Map();
+  for (const [count, owner] of phase.grid) {
+    if (owner >= 0 && count > 0) counts.set(owner, (counts.get(owner) || 0) + count);
+  }
+  const out = new Set();
+  const moved = new Set();
+  for (let i = 0; i <= phase.ti && i < REPLAY.turns.length; i++) {
+    moved.add(REPLAY.turns[i].player);
+    REPLAY.turns[i].eliminated.forEach(p => out.add(p));
+  }
+  return { counts, out, moved };
+}
+
+function renderPanel(phase) {
+  const { counts, out } = seatState(phase);
+  const turn = phase.ti >= 0 ? REPLAY.turns[phase.ti] : null;
+  seatsEl.innerHTML = REPLAY.players.map(p => {
+    const isOut = out.has(p.id);
+    const active = turn && turn.player === p.id && !isOut;
+    return `<div class="row${active ? " turn" : ""}${isOut ? " out" : ""}" style="color:${color(p.id)}">
+      <span class="dot" style="background:${color(p.id)}"></span>
+      <span class="nm">${escapeHtml(p.name)}</span>
+      <span class="sc${isOut ? " gone" : ""}">${isOut ? "OUT" : (counts.get(p.id) || 0)}</span>
+    </div>`;
+  }).join("");
+
+  // Board share as width, so who is winning reads before any number is parsed.
+  const live = REPLAY.players.filter(p => !out.has(p.id));
+  const totalOrbs = live.reduce((n, p) => n + (counts.get(p.id) || 0), 0);
+  shareEl.innerHTML = totalOrbs
+    ? live.map(p => {
+        const n = counts.get(p.id) || 0;
+        return n ? `<span style="flex-grow:${n};background:${color(p.id)}"></span>` : "";
+      }).join("")
+    : "";
+
+  if (turn) {
+    const who = REPLAY.players.find(p => p.id === turn.player);
+    const bits = [`<strong style="color:${color(turn.player)}">${escapeHtml(who ? who.name : "?")}</strong>`,
+                  `(${turn.row},${turn.col})`];
+    if (turn.latency) bits.push(`${turn.latency.toFixed(1)}s`);
+    if (turn.fallback) bits.push("<em>fallback</em>");
+    let html = bits.join(" &middot; ");
+    if (turn.reason) html += `<br><span class="why">${escapeHtml(turn.reason)}</span>`;
+    metaEl.innerHTML = html;
+  } else {
+    metaEl.textContent = "";
+  }
+
+  const atEnd = phase === phases[phases.length - 1];
+  if (atEnd && REPLAY.winner !== null && REPLAY.winner !== undefined) {
+    const w = REPLAY.players.find(p => p.id === REPLAY.winner);
+    winnerEl.innerHTML = `<span style="color:${color(REPLAY.winner)}">${escapeHtml(w ? w.name : "?")} wins</span>`;
+  } else {
+    winnerEl.textContent = "";
+  }
+}
+
+let clock = 0, elapsed = 0, playing = true, speed = 1, last = performance.now();
+const SPEEDS = [1, 2, 4, 0.5];
+let speedIndex = 0;
+
+function phaseAt(time) {
+  let lo = 0, hi = phases.length - 1;
+  while (lo < hi) {
+    const mid = (lo + hi + 1) >> 1;
+    if (starts[mid] <= time) lo = mid; else hi = mid - 1;
+  }
+  const p = phases[lo];
+  return [p, p.dur > 0 ? Math.min(1, (time - starts[lo]) / p.dur) : 1];
+}
+
+function frame(now) {
+  const dt = Math.min(0.1, (now - last) / 1000);
+  last = now;
+  clock += dt;
+  if (playing) {
+    elapsed += dt * speed;
+    if (elapsed >= total) { elapsed = total; playing = false; playBtn.textContent = "Replay"; }
+    scrubEl.value = Math.round((elapsed / total) * 1000);
+  }
+  render();
+  requestAnimationFrame(frame);
+}
+
+function seekTurn(delta) {
+  const [phase] = phaseAt(Math.min(elapsed, total - 1e-6));
+  const target = Math.max(0, Math.min(REPLAY.turns.length - 1, phase.ti + delta));
+  const index = phases.findIndex(p => p.ti === target);
+  elapsed = index >= 0 ? starts[index] : 0;
+  scrubEl.value = Math.round((elapsed / total) * 1000);
+}
+
+playBtn.addEventListener("click", () => {
+  if (elapsed >= total) elapsed = 0;
+  playing = !playing;
+  playBtn.textContent = playing ? "Pause" : "Play";
+});
+document.getElementById("restart").addEventListener("click", () => {
+  elapsed = 0; playing = true; playBtn.textContent = "Pause";
+});
+document.getElementById("back").addEventListener("click", () => seekTurn(-1));
+document.getElementById("fwd").addEventListener("click", () => seekTurn(1));
+speedBtn.addEventListener("click", () => {
+  speedIndex = (speedIndex + 1) % SPEEDS.length;
+  speed = SPEEDS[speedIndex];
+  speedBtn.textContent = `${speed}×`;
+});
+scrubEl.addEventListener("input", () => {
+  elapsed = (scrubEl.value / 1000) * total;
+  if (elapsed < total) playBtn.textContent = playing ? "Pause" : "Play";
+});
+window.addEventListener("keydown", e => {
+  if (e.key === " ") { e.preventDefault(); playBtn.click(); }
+  else if (e.key === "ArrowLeft") { e.preventDefault(); seekTurn(-1); }
+  else if (e.key === "ArrowRight") { e.preventDefault(); seekTurn(1); }
+});
+function render() {
+  const [phase, t] = phaseAt(Math.min(elapsed, total - 1e-6));
+  draw(phase, t, clock);
+  renderPanel(phase);
+}
+
+function relayout() { layout(); render(); }
+
+window.addEventListener("resize", relayout);
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden) { last = performance.now(); relayout(); }
+});
+if (window.ResizeObserver) {
+  new ResizeObserver(relayout).observe(canvas.parentElement);
+}
+
+// Paint once synchronously. requestAnimationFrame does not fire while a tab is
+// hidden, so without this the page would sit blank until it gained focus.
+layout();
+render();
+requestAnimationFrame(frame);
+</script>
