@@ -137,3 +137,30 @@ def test_threaded_mode_keeps_drawing_while_a_player_thinks() -> None:
         if app.executor is not None:
             app.executor.shutdown(wait=True, cancel_futures=True)
         pygame.quit()
+
+
+def test_model_stats_block_yields_rather_than_overlapping_the_hints(app: GameApp) -> None:
+    class FakeModel(Player):
+        def __init__(self, player_id: int) -> None:
+            super().__init__(player_id, f"model-{player_id}")
+            self.calls = 3
+            self.illegal = 0
+            self.errors = 0
+            self.average_latency = 4.2
+
+        def choose_move(self, board):
+            return board.legal_moves(self.player_id)[0]
+
+    app.game.players = [FakeModel(p.player_id) for p in app.game.players]
+
+    roomy = app._draw_model_stats(0, 100, limit=10_000)
+    cramped = app._draw_model_stats(0, 100, limit=110)
+
+    assert roomy > 100
+    assert cramped == 100
+
+
+def test_status_line_is_clipped_to_the_available_space(app: GameApp) -> None:
+    app.status = "a very long status line " * 10
+    assert app._draw_status(0, 100, limit=100) == 100
+    assert app._draw_status(0, 100, limit=10_000) > 100

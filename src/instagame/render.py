@@ -725,8 +725,16 @@ class GameApp:
         y += 8
         y = self._draw_controls(x, y)
         y += 6
-        y = self._draw_status(x, y)
-        y = self._draw_model_stats(x, y)
+
+        hints = [
+            "space  pause / resume",
+            "s  single step",
+            "enter  skip animation",
+            "esc  quit",
+        ]
+        hints_top = panel.bottom - 18 * len(hints) - 12
+        y = self._draw_status(x, y, hints_top)
+        y = self._draw_model_stats(x, y, hints_top)
 
         if self.game.over:
             y += 10
@@ -738,8 +746,7 @@ class GameApp:
                 color = player_color(self.game.winner)
             self.screen.blit(self.font.render(text, True, color), (x + 16, y))
 
-        hints = ["space  pause / resume", "s  single step", "enter  skip animation", "esc  quit"]
-        hy = panel.bottom - 18 * len(hints) - 12
+        hy = hints_top
         for hint in hints:
             self.screen.blit(self.font_small.render(hint, True, COLOR_MUTED), (x + 16, hy))
             hy += 18
@@ -774,7 +781,7 @@ class GameApp:
             lines.append(current)
         return lines
 
-    def _draw_status(self, x: int, y: int) -> int:
+    def _draw_status(self, x: int, y: int, limit: int) -> int:
         """Draw the thinking indicator or the last move summary.
 
         Parameters
@@ -783,6 +790,8 @@ class GameApp:
             Panel left edge.
         y : int
             Row top.
+        limit : int
+            Y coordinate the block must not grow past.
 
         Returns
         -------
@@ -800,12 +809,16 @@ class GameApp:
             color = COLOR_MUTED
         if not text:
             return y
+        drawn = 0
         for line in self._wrap(text, self.font_small, PANEL_WIDTH - 32)[:3]:
+            if y + 18 > limit:
+                break
             self.screen.blit(self.font_small.render(line, True, color), (x + 16, y))
             y += 18
-        return y + 6
+            drawn += 1
+        return y + 6 if drawn else y
 
-    def _draw_model_stats(self, x: int, y: int) -> int:
+    def _draw_model_stats(self, x: int, y: int, limit: int) -> int:
         """Draw per-model call counts and latency, when any model is playing.
 
         Parameters
@@ -814,6 +827,9 @@ class GameApp:
             Panel left edge.
         y : int
             Row top.
+        limit : int
+            Y coordinate the block must not grow past. The block is dropped
+            entirely rather than drawn on top of the shortcut hints.
 
         Returns
         -------
@@ -821,7 +837,7 @@ class GameApp:
             The next free y coordinate.
         """
         rows = [p for p in self.game.players if hasattr(p, "average_latency")]
-        if not rows:
+        if not rows or y + 18 + 17 * len(rows) > limit:
             return y
         self.screen.blit(self.font_small.render("models", True, COLOR_MUTED), (x + 16, y))
         y += 18
