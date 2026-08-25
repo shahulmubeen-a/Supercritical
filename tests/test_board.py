@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from instagame.board import Board, IllegalMoveError
+from supercritical.board import Board, IllegalMoveError
 
 
 def seed(board: Board, cells: dict[tuple[int, int], tuple[int, int]]) -> None:
