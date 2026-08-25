@@ -8,12 +8,15 @@ import os
 import random
 import sys
 from collections import Counter
+from pathlib import Path
 
 from .board import Board
 from .game import Game
 from .logging_config import configure_logging, get_logger
 from .ollama import OllamaClient, OllamaError, resolve_model_tag
 from .players import PLAYER_TYPES, build_player
+from .replay import Recorder
+from .viewer import DEFAULT_TITLE, write_page
 
 DEFAULT_ROWS = 9
 DEFAULT_COLS = 6
@@ -97,8 +100,62 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="ask models for a one line reason, shown in the panel; costs latency",
     )
+    parser.add_argument(
+        "--record",
+        default=None,
+        help=(
+            "write a replay to this path. A .html suffix writes a standalone, "
+            "deployable viewer page; .json writes the raw replay data"
+        ),
+    )
+    parser.add_argument("--title", default=DEFAULT_TITLE, help="title shown on the replay page")
     parser.add_argument("--verbose", action="store_true", help="debug level logging")
     return parser
+
+
+def save_replay(recorder: Recorder, path: Path, title: str, logger) -> None:
+    """Write a recorded match as either a viewer page or raw JSON.
+
+    Parameters
+    ----------
+    recorder : Recorder
+        The recorded match.
+    path : Path
+        Destination. A ``.json`` suffix writes raw data, anything else writes
+        a standalone HTML page.
+    title : str
+        Title for the page.
+    logger : logging.Logger
+        Logger for the confirmation message.
+    """
+    if path.suffix.lower() == ".json":
+        recorder.write_json(path)
+    else:
+        write_page(recorder.to_dict(), path, title)
+    logger.info("replay written to %s", path)
+
+
+def replay_path(base: str, index: int, total: int) -> Path:
+    """Return the output path for one game of a possibly multi-game run.
+
+    Parameters
+    ----------
+    base : str
+        Path given on the command line.
+    index : int
+        Zero based game number.
+    total : int
+        How many games are being played.
+
+    Returns
+    -------
+    Path
+        The path for this game, numbered when more than one is played.
+    """
+    path = Path(base)
+    if total <= 1:
+        return path
+    return path.with_name(f"{path.stem}-{index + 1}{path.suffix}")
 
 
 def make_game(
@@ -255,14 +312,24 @@ def run_headless(
     for index in range(args.games):
         game = make_game(args.rows, args.cols, seats, rng, args, client)
         last_game = game
+        recorder = Recorder(game) if args.record else None
         turns = 0
         while not game.over and turns < MAX_HEADLESS_TURNS:
             try:
-                game.step()
+                result = game.step()
             except RuntimeError as exc:
                 logger.warning("game %d stopped: %s", index, exc)
                 break
+            if recorder is not None:
+                recorder.record(result)
             turns += 1
+        if recorder is not None:
+            save_replay(
+                recorder,
+                replay_path(args.record, index, args.games),
+                args.title,
+                logger,
+            )
         turns_total += turns
         if game.winner is None:
             tally["unfinished"] += 1
@@ -305,6 +372,7 @@ def run_visual(
 
     client, seats = make_client(args, seats)
     game = make_game(args.rows, args.cols, seats, rng, args, client)
+    recorder = Recorder(game) if args.record else None
     try:
         app = GameApp(
             game,
@@ -313,12 +381,15 @@ def run_visual(
             animate=not args.no_animate,
             motion_blur=not args.no_blur,
             debug=not args.no_debug,
+            on_turn=recorder.record if recorder is not None else None,
         )
     except Exception:
         logger.exception("could not open a window; rerun with --headless")
         return 2
     app.run()
     report_model_stats(logger, game)
+    if recorder is not None:
+        save_replay(recorder, Path(args.record), args.title, logger)
     return 0
 
 
