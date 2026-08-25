@@ -38,7 +38,7 @@ uv run instagame --headless --games 200 --seed 7
 | Flag | Effect |
 | --- | --- |
 | `--rows`, `--cols` | Board dimensions |
-| `--players` | Comma separated seats: `random`, `greedy`, `ollama:<model tag>` |
+| `--players` | Comma separated seats, see Strategies below |
 | `--seed` | Reproducible match |
 | `--headless`, `--games` | Simulate without a window and report a win tally |
 | `--move-delay` | Seconds between bot turns |
@@ -64,6 +64,68 @@ click cells to place for that player. It routes through the same
 `Game.apply_move` path a bot uses, so hand-played moves cannot diverge from
 real ones. It is a dev tool, not a seat: it does not take part in turn
 rotation and can act out of turn.
+
+## Strategies
+
+Eighteen playable strategies ship with the game. Each commits to a single idea
+about how to win, so a match between them reads as an argument rather than a set
+of tuning variants.
+
+```bash
+uv run instagame --list-players
+uv run instagame --players sentinel,retaliator,corner,loader
+```
+
+**Positional** — look only at the cell and its neighbours, so they cost nothing:
+
+| Name | Idea |
+| --- | --- |
+| `random` | Uniform over legal moves. The baseline. |
+| `greedy` | Capture value against adjacency risk, one move ahead |
+| `corner` | Take the cheapest cells to detonate |
+| `center` | Build in the interior, where cells hold the most |
+| `aggressor` | Detonate into the biggest reachable enemy stack |
+| `cautious` | Never sit next to an enemy cell one orb from critical |
+| `loader` | Stockpile: fill cells to one short of critical |
+| `detonator` | Set something off every turn it can |
+| `frontier` | Grow as one connected mass |
+| `parity` | Occupy one colour of the checkerboard, interlocking rather than solid |
+| `hunter` | Attack whichever opponent is closest to elimination |
+| `mirror` | Answer each opponent move with its reflection through the centre |
+
+**Simulating** — play each candidate out on a copy of the board:
+
+| Name | Idea |
+| --- | --- |
+| `chain` | Longest chain reaction |
+| `harvester` | Most own orbs once it settles |
+| `territorial` | Most cells held, regardless of orbs in them |
+| `spoiler` | Suppress whoever is ahead rather than build |
+| `sentinel` | Most armed cells: stored potential to fire next turn |
+| `retaliator` | One move deeper, minimising the best reply against it |
+
+### Results
+
+800 four-player games on a 6x5 board, seats drawn at random. Baseline is 25%.
+
+| Strategy | Win rate | | Strategy | Win rate |
+| --- | --- | --- | --- | --- |
+| `sentinel` | **59.9%** | | `detonator` | 17.1% |
+| `retaliator` | 49.4% | | `parity` | 17.0% |
+| `greedy` | 43.7% | | `corner` | 10.9% |
+| `chain` | 42.8% | | `random` | 10.7% |
+| `harvester` | 41.3% | | `mirror` | 8.2% |
+| `spoiler` | 38.4% | | `cautious` | 8.1% |
+| `aggressor` | 30.8% | | `frontier` | 6.0% |
+| `territorial` | 30.0% | | `loader` | 1.7% |
+| `center` | 19.7% | | | |
+| `hunter` | 19.3% | | | |
+
+Reproduce with any four names on `--players`, or read the tournament as a
+statement about the game: stored potential beats spent potential. `sentinel`
+wins by keeping the board armed and letting opponents commit first, while
+`loader`, which also stockpiles but never fires, comes last. Holding the threat
+is worth more than either hoarding or discharging it.
 
 ## Model players
 
