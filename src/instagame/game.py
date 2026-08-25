@@ -5,7 +5,7 @@ from __future__ import annotations
 import random
 from dataclasses import dataclass
 
-from .board import DEFAULT_MAX_CASCADE_STEPS, Board, Placement
+from .board import DEFAULT_MAX_CASCADE_STEPS, Board, IllegalMoveError, Placement
 from .logging_config import get_logger
 from .players.base import Player
 
@@ -155,6 +155,32 @@ class Game:
         if not self.board.is_settled():
             raise RuntimeError("cannot start a turn on an unsettled board")
 
+        row, col, used_fallback = self.ask_current_player()
+        return self.commit_turn(row, col, used_fallback=used_fallback)
+
+    def ask_current_player(self) -> tuple[int, int, bool]:
+        """Query the current player for a move without applying it.
+
+        Split out from :meth:`step` so a caller can run a slow player, such as
+        one backed by a language model, on a worker thread and keep its UI
+        responsive. This only reads the board, so it is safe off the main
+        thread as long as nothing else mutates the game meanwhile.
+
+        Returns
+        -------
+        tuple of (int, int, bool)
+            Row, column and whether the random fallback was used.
+
+        Raises
+        ------
+        RuntimeError
+            If the game is over, the board is unsettled, or the player has no
+            legal move.
+        """
+        if self.over:
+            raise RuntimeError("game is already over")
+        if not self.board.is_settled():
+            raise RuntimeError("cannot start a turn on an unsettled board")
         player = self.current_player()
         options = self.board.legal_moves(player.player_id)
         if not options:
@@ -163,9 +189,29 @@ class Game:
             self._check_winner()
             self._advance_turn()
             raise RuntimeError("player had no legal move")
+        return self._ask(player, options)
 
-        row, col, used_fallback = self._ask(player, options)
-        result = self.apply_move(row, col, player.player_id, used_fallback=used_fallback)
+    def commit_turn(self, row: int, col: int, used_fallback: bool = False) -> TurnResult:
+        """Apply a move for the current player and hand the turn on.
+
+        Parameters
+        ----------
+        row : int
+            Row index.
+        col : int
+            Column index.
+        used_fallback : bool, optional
+            Recorded on the result for reporting, by default False.
+
+        Returns
+        -------
+        TurnResult
+            The completed turn.
+        """
+        player_id = self.current_player().player_id
+        if not self.board.is_legal(row, col, player_id):
+            raise IllegalMoveError(f"player {player_id} may not place at ({row}, {col})")
+        result = self.apply_move(row, col, player_id, used_fallback=used_fallback)
         self._advance_turn()
         return result
 
